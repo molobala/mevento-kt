@@ -688,6 +688,7 @@ class Parser(private val lexer: Lexer) {
         }
         return IfStatementAST(test, consequent, alternate)
     }
+
     private fun pushLoop() {
         _loopTrack.push(true)
     }
@@ -695,6 +696,7 @@ class Parser(private val lexer: Lexer) {
     private fun popLoop() {
         _loopTrack.pop()
     }
+
     private fun _whileLoop(retain: Boolean = false): WhileLoopStatement {
         val token = currentToken!!
         _eat(TokenType.WHILE_TILL)
@@ -1427,6 +1429,15 @@ open class MEvento(
         return currentScope?.resolve(name)
     }
 
+    fun resolveFunction(name: String): ((List<Any?>, MEvento?) -> Any?)? {
+        return functionsRegistry[name]
+    }
+
+    fun copyAttributes(other: MEvento) {
+        functionsRegistry.putAll(other.functionsRegistry)
+        rootScope.memory.putAll(other.rootScope.memory)
+    }
+
     protected fun _changeVariable(name: String, value: Any?): Any? {
         return if (currentScope?.change(name, value) == true) {
             value
@@ -1881,8 +1892,7 @@ open class MEvento(
 
     open fun clone(): MEvento {
         val ret = MEvento()
-        ret.functionsRegistry.putAll(functionsRegistry)
-        ret.rootScope.memory.putAll(rootScope.memory)
+        ret.copyAttributes(this)
         return ret
     }
 
