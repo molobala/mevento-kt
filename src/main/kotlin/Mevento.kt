@@ -1403,8 +1403,7 @@ class MEventScope(
 
 open class MEvento(
     private val debug: Boolean = false,
-    rootScope: MEventScope? = null,
-    functionsRegistry: MutableMap<String, (List<Any?>, MEvento?) -> Any?>? = null,
+    source: MEvento? = null,
 ) {
 
     internal val rootScope: MEventScope
@@ -1412,8 +1411,8 @@ open class MEvento(
     internal val functionsRegistry: MutableMap<String, (List<Any?>, MEvento?) -> Any?>
 
     init {
-        this.rootScope = rootScope ?: MEventScope("com.ml.labs.MEvento", mutableMapOf())
-        this.functionsRegistry = functionsRegistry ?: mutableMapOf()
+        this.rootScope = source?.rootScope ?: MEventScope("com.ml.labs.MEvento", mutableMapOf())
+        this.functionsRegistry = source?.functionsRegistry ?: mutableMapOf()
         this.functionsRegistry.putAll(globalFunctionsRegistry)
         currentScope = this.rootScope
     }
