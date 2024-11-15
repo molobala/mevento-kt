@@ -48,7 +48,7 @@ class MeventoKtTest {
     @Test
     fun `should parse literal object`() {
         vm.execute("obj = {'key': 'molo'}\nlog(obj)\nobj").also {
-            assertInstanceOf(Map::class.java, it)
+            assertEquals(true, it is Map<*,*>)
             assertEquals("molo", (it as Map<*, *>)["key"])
         }
     }
@@ -57,7 +57,7 @@ class MeventoKtTest {
     fun `should parse change object by indexing`() {
         vm.execute("obj = {'key': 'molo'}\nlog(obj)\nobj['molo']='mol';obj['tt']=20\nobj").also {
             assertNotNull(it)
-            assertInstanceOf(Map::class.java, it)
+            assertEquals(true, it is Map<*,*>)
             it as Map<*, *>
             assertEquals("molo", it["key"])
             assertEquals("mol", it["molo"])
@@ -69,7 +69,7 @@ class MeventoKtTest {
     fun `should parse literal array`() {
         vm.execute("arr = ['key', 'molo', 12, 34 + 5]\narr").also {
             assertNotNull(it)
-            assertInstanceOf(List::class.java, it)
+            assertEquals(true, it is List<*>)
             it as List<*>
             assertEquals("key", it[0])
             assertEquals("molo", it[1])
@@ -81,7 +81,7 @@ class MeventoKtTest {
     fun `should parse change array by index`() {
         vm.execute("arr = ['key', 'molo', 12, 34 + 5]\narr[0]=23\narr[1]='changed'\narr").also {
             assertNotNull(it)
-            assertInstanceOf(List::class.java, it)
+            assertEquals(true, it is List<*>)
             it as List<*>
             assertEquals(23L, it[0])
             assertEquals("changed", it[1])
@@ -229,7 +229,7 @@ class MeventoKtTest {
         }
         s"""
         ).also {
-            assertInstanceOf(List::class.java, it)
+            assertEquals(true, it is List<*>)
             it as List<*>
             assertEquals(101, it.size)
             assertEquals(100L, it[100])
@@ -262,7 +262,7 @@ class MeventoKtTest {
         }
         s"""
         ).also {
-            assertInstanceOf(List::class.java, it)
+            assertEquals(true, it is List<*>)
             it as List<*>
             assertEquals(100, it.size)
             assertEquals(99L, it[99])
@@ -337,7 +337,7 @@ class MeventoKtTest {
         }
         b"""
         ).also {
-            assertInstanceOf(List::class.java, it)
+            assertEquals(true, it is List<*>)
             it as List<*>
             assertEquals(2, it.size)
             assertEquals("test", it[1])
@@ -354,7 +354,7 @@ class MeventoKtTest {
         }
         b"""
         ).also {
-            assertInstanceOf(List::class.java, it)
+            assertEquals(true, it is List<*>)
             it as List<*>
             assertEquals(2, it.size)
             assertEquals("test", it[1])
