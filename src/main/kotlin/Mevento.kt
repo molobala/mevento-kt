@@ -1458,12 +1458,12 @@ open class MEvento(
     val memory: Map<String, Any?>
         get() = rootScope.memory
 
-    fun assignArray(owner: MutableList<Any?>, property: Any?, value: Any?) {
-        owner[(property as Number).toInt()] = value
+    fun assignArray(owner: MutableList<*>, property: Any?, value: Any?) {
+        (owner as MutableList<Any?>)[(property as Number).toInt()] = value
     }
 
-    fun assignMap(owner: MutableMap<String, Any?>, property: Any?, value: Any?) {
-        owner[property.toString()] = value
+    fun assignMap(owner: MutableMap<*, *>, property: Any?, value: Any?) {
+        (owner as MutableMap<String, Any?>)[property.toString()] = value
     }
 
     protected fun _declareForIdentifier(node: AST, value: Any?) {
@@ -1556,9 +1556,9 @@ open class MEvento(
 
     protected fun assignProperty(owner: Any?, property: Any?, value: Any?) {
         if (owner is MutableList<*>) {
-            assignArray(owner as MutableList<Any?>, property, value)
+            assignArray(owner as MutableList<*>, property, value)
         } else if (owner is MutableMap<*, *>) {
-            assignMap(owner as MutableMap<String, Any?>, property, value)
+            assignMap(owner as MutableMap<*, *>, property, value)
         }
     }
 
@@ -1767,7 +1767,7 @@ open class MEvento(
     open fun visitArrayExpression(ast: AST): Any {
         val node = ast as ArrayExpression
         val args = resolveArguments(node.elements)
-        return args
+        return args.toMutableList()
     }
 
     open fun visitBreakAST(node: AST): Any? = BreakBranch()
