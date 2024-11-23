@@ -1556,9 +1556,9 @@ open class MEvento(
 
     protected fun assignProperty(owner: Any?, property: Any?, value: Any?) {
         if (owner is MutableList<*>) {
-            assignArray(owner as MutableList<*>, property, value)
+            assignArray(owner, property, value)
         } else if (owner is MutableMap<*, *>) {
-            assignMap(owner as MutableMap<*, *>, property, value)
+            assignMap(owner, property, value)
         }
     }
 

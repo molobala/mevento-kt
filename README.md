@@ -37,6 +37,6 @@ import com.ml.labs.MEvento
 
 val mevento = MEvento.newInstance()
 
-mevento.execute(`log("molo")`)
+mevento.execute("""log("molo")""")
 
 ```
