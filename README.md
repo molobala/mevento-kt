@@ -52,6 +52,28 @@ mvn install
 mvn -f async/pom.xml test
 ```
 
+With JitPack, add the repository as usual:
+
+```kotlin
+repositories {
+    maven("https://jitpack.io")
+}
+```
+
+The existing synchronous artifact remains:
+
+```kotlin
+implementation("com.github.molobala:mevento-kt:<tag>")
+```
+
+The coroutine artifact is published as a separate module for new tags:
+
+```kotlin
+implementation("com.github.molobala.mevento-kt:mevento-coroutines:<tag>")
+```
+
+After tagging, look up `molobala/mevento-kt` on JitPack to confirm that `mevento-coroutines` appears in the module list for that tag.
+
 Example:
 
 ```kotlin

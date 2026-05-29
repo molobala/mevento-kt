@@ -1,0 +1,6 @@
+jdk:
+  - openjdk17
+
+install:
+  - mvn install -DskipTests
+  - mvn -f async/pom.xml install -DskipTests
