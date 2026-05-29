@@ -38,4 +38,11 @@ class MeventoRegistrationTest {
             assertEquals("Hi", it)
         }
     }
+
+    @Test
+    fun `Should inject input for static run`() {
+        MEvento.run("a + b", input = mapOf("a" to 12L, "b" to 23L)).also {
+            assertEquals(35L, it)
+        }
+    }
 }

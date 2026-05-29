@@ -360,4 +360,22 @@ class MeventoKtTest {
             assertEquals("test", it[1])
         }
     }
+    @Test
+    fun `Should handle 'return' statement correctly`() {
+        vm.execute("""
+            a = 12
+            return a
+        """.trimIndent()).also {
+            assertEquals(12L, it)
+        }
+        vm.execute("""
+            a = 12
+            if(a < 12) {
+                return "<"
+            }
+            return ">"
+        """.trimIndent()).also {
+            assertEquals(">", it)
+        }
+    }
 }

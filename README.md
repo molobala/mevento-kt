@@ -40,3 +40,26 @@ val mevento = MEvento.newInstance()
 mevento.execute("""log("molo")""")
 
 ```
+
+## Coroutine async artifact
+
+The core artifact stays synchronous and does not depend on coroutines. Coroutine support lives in the separate `mevento-coroutines` artifact. It provides `MEventoAsync`, `MEvento.newAsyncInstance()`, and suspend host-function registration helpers.
+
+Build the core artifact locally first, then build the coroutine artifact:
+
+```bash
+mvn install
+mvn -f async/pom.xml test
+```
+
+Example:
+
+```kotlin
+import com.ml.labs.MEventoAsync
+import kotlinx.coroutines.runBlocking
+
+runBlocking {
+    val mevento = MEventoAsync.newInstance()
+    val result = mevento.execute("a = 12; b = 23; a + b").await()
+}
+```

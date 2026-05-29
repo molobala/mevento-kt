@@ -1931,8 +1931,12 @@ open class MEvento(
             globalFunctionsRegistry.remove(id)
         }
 
-        fun run(source: String, cache: Boolean = false): Any? {
-            return MEvento().execute(source, cache)
+        fun run(
+            source: String,
+            cache: Boolean = false,
+            input: Map<String, Any?>? = null,
+        ): Any? {
+            return MEvento().execute(source, cache, input)
         }
 
         fun newInstance(): MEvento {
