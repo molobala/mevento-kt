@@ -209,6 +209,9 @@ class MEventoRuntimeError(
     val argCount: Int? = null,
     val minArgs: Int? = null,
     val maxArgs: Int? = null,
+    val argIndex: Int? = null,
+    val expectedType: String? = null,
+    val actualType: String? = null,
 ) : RuntimeException(format(detail, line, col, nodeType), cause) {
     fun diagnostic(): Map<String, Any?> {
         return mapOf(
@@ -221,6 +224,9 @@ class MEventoRuntimeError(
             "argCount" to argCount,
             "minArgs" to minArgs,
             "maxArgs" to maxArgs,
+            "argIndex" to argIndex,
+            "expectedType" to expectedType,
+            "actualType" to actualType,
         )
     }
 
@@ -261,6 +267,9 @@ data class MEventoValidationError(
     val argCount: Int? = null,
     val minArgs: Int? = null,
     val maxArgs: Int? = null,
+    val argIndex: Int? = null,
+    val expectedType: String? = null,
+    val actualType: String? = null,
 )
 
 data class MEventoValidationResult(
@@ -273,27 +282,50 @@ data class MEventoFunctionSpec(
     val minArgs: Int? = null,
     val maxArgs: Int? = null,
     val tags: Set<String> = emptySet(),
+    val args: List<MEventoArgSpec> = emptyList(),
 ) {
     init {
         require(minArgs == null || minArgs >= 0) { "minArgs must be greater than or equal to 0" }
         require(maxArgs == null || maxArgs >= 0) { "maxArgs must be greater than or equal to 0" }
-        require(minArgs == null || maxArgs == null || minArgs <= maxArgs) { "minArgs must be less than or equal to maxArgs" }
+        val effectiveMinArgs = effectiveMinArgs()
+        require(effectiveMinArgs == null || maxArgs == null || effectiveMinArgs <= maxArgs) { "minArgs must be less than or equal to maxArgs" }
+    }
+
+    fun effectiveMinArgs(): Int? {
+        val requiredArgs = args.indexOfLast { it.required } + 1
+        return listOfNotNull(minArgs, requiredArgs.takeIf { it > 0 }).maxOrNull()
     }
 
     fun acceptsArity(count: Int): Boolean {
-        if (minArgs != null && count < minArgs) return false
+        val effectiveMinArgs = effectiveMinArgs()
+        if (effectiveMinArgs != null && count < effectiveMinArgs) return false
         if (maxArgs != null && count > maxArgs) return false
         return true
     }
 
     fun arityDescription(): String {
+        val effectiveMinArgs = effectiveMinArgs()
         return when {
-            minArgs == null && maxArgs == null -> "any number of"
-            minArgs != null && maxArgs != null && minArgs == maxArgs -> minArgs.toString()
-            minArgs != null && maxArgs != null -> "$minArgs..$maxArgs"
-            minArgs != null -> "at least $minArgs"
+            effectiveMinArgs == null && maxArgs == null -> "any number of"
+            effectiveMinArgs != null && maxArgs != null && effectiveMinArgs == maxArgs -> effectiveMinArgs.toString()
+            effectiveMinArgs != null && maxArgs != null -> "$effectiveMinArgs..$maxArgs"
+            effectiveMinArgs != null -> "at least $effectiveMinArgs"
             else -> "at most $maxArgs"
         }
+    }
+}
+
+data class MEventoArgSpec(
+    val name: String,
+    val type: String = "any",
+    val required: Boolean = true,
+) {
+    init {
+        require(type in SUPPORTED_TYPES) { "Unsupported argument type '$type'" }
+    }
+
+    companion object {
+        val SUPPORTED_TYPES = setOf("any", "null", "boolean", "number", "string", "array", "object")
     }
 }
 
@@ -1535,6 +1567,9 @@ open class MEvento(
         argCount: Int? = null,
         minArgs: Int? = null,
         maxArgs: Int? = null,
+        argIndex: Int? = null,
+        expectedType: String? = null,
+        actualType: String? = null,
     ): MEventoRuntimeError {
         return MEventoRuntimeError(
             detail,
@@ -1546,6 +1581,9 @@ open class MEvento(
             argCount = argCount,
             minArgs = minArgs,
             maxArgs = maxArgs,
+            argIndex = argIndex,
+            expectedType = expectedType,
+            actualType = actualType,
         )
     }
 
@@ -1782,13 +1820,66 @@ open class MEvento(
                         "Function '$calleeName' expects ${spec.arityDescription()} argument(s), got ${node.arguments.size}",
                         calleeName,
                         argCount = node.arguments.size,
-                        minArgs = spec.minArgs,
+                        minArgs = spec.effectiveMinArgs(),
                         maxArgs = spec.maxArgs,
+                    )
+                )
+            } else {
+                validateStaticArgumentTypes(node, spec, errors)
+            }
+        }
+        node.arguments.forEach { validateNode(it, knownFunctions, errors, protectedByTry) }
+    }
+
+    private fun validateStaticArgumentTypes(
+        node: CallExpressionAST,
+        spec: MEventoFunctionSpec,
+        errors: MutableList<MEventoValidationError>,
+    ) {
+        spec.args.forEachIndexed { index, argSpec ->
+            val argument = node.arguments.getOrNull(index) ?: return@forEachIndexed
+            val actualType = staticArgumentType(argument) ?: return@forEachIndexed
+            if (!argumentTypeMatches(argSpec, actualType)) {
+                errors.add(
+                    validationError(
+                        "invalid_argument_type",
+                        node,
+                        "Function '${spec.name}' argument $index expects ${argSpec.type}, got $actualType",
+                        spec.name,
+                        argIndex = index,
+                        expectedType = argSpec.type,
+                        actualType = actualType,
                     )
                 )
             }
         }
-        node.arguments.forEach { validateNode(it, knownFunctions, errors, protectedByTry) }
+    }
+
+    private fun staticArgumentType(node: AST): String? {
+        return when (node) {
+            is LiteralAST -> valueType(node.value)
+            is ArrayExpression -> "array"
+            is ObjectExpression -> "object"
+            else -> null
+        }
+    }
+
+    private fun valueType(value: Any?): String {
+        return when (value) {
+            null -> "null"
+            is Boolean -> "boolean"
+            is Number -> "number"
+            is String -> "string"
+            is List<*> -> "array"
+            is Map<*, *> -> "object"
+            else -> "object"
+        }
+    }
+
+    private fun argumentTypeMatches(spec: MEventoArgSpec, actualType: String): Boolean {
+        if (spec.type == "any") return true
+        if (!spec.required && actualType == "null") return true
+        return spec.type == actualType
     }
 
     private fun validationError(
@@ -1799,6 +1890,9 @@ open class MEvento(
         argCount: Int? = null,
         minArgs: Int? = null,
         maxArgs: Int? = null,
+        argIndex: Int? = null,
+        expectedType: String? = null,
+        actualType: String? = null,
     ): MEventoValidationError {
         return MEventoValidationError(
             code = code,
@@ -1810,6 +1904,9 @@ open class MEvento(
             argCount = argCount,
             minArgs = minArgs,
             maxArgs = maxArgs,
+            argIndex = argIndex,
+            expectedType = expectedType,
+            actualType = actualType,
         )
     }
 
@@ -1938,13 +2035,38 @@ open class MEvento(
                 code = "invalid_function_arity",
                 name = calleeName,
                 argCount = args.size,
-                minArgs = spec.minArgs,
+                minArgs = spec.effectiveMinArgs(),
                 maxArgs = spec.maxArgs,
             )
         }
         val argValues = args.map { visit(it) }.toList()
+        if (spec != null) {
+            validateRuntimeArgumentTypes(node, spec, argValues)
+        }
         val result = fn.invoke(argValues, this)
         return result
+    }
+
+    private fun validateRuntimeArgumentTypes(
+        node: AST,
+        spec: MEventoFunctionSpec,
+        values: List<Any?>,
+    ) {
+        spec.args.forEachIndexed { index, argSpec ->
+            val value = values.getOrNull(index) ?: return@forEachIndexed
+            val actualType = valueType(value)
+            if (!argumentTypeMatches(argSpec, actualType)) {
+                throw runtimeError(
+                    node,
+                    "Function '${spec.name}' argument $index expects ${argSpec.type}, got $actualType",
+                    code = "invalid_argument_type",
+                    name = spec.name,
+                    argIndex = index,
+                    expectedType = argSpec.type,
+                    actualType = actualType,
+                )
+            }
+        }
     }
 
 

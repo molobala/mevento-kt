@@ -1,4 +1,5 @@
 import com.ml.labs.MEvento
+import com.ml.labs.MEventoArgSpec
 import com.ml.labs.MEventoFunctionSpec
 import com.ml.labs.MEventoRuntimeError
 import org.junit.jupiter.api.Test
@@ -77,7 +78,16 @@ class MeventoRegistrationTest {
 
     @Test
     fun `Should expose instance function capabilities`() {
-        vm.registerFunction("tagged", MEventoFunctionSpec("tagged", minArgs = 1, maxArgs = 2, tags = setOf("pure"))) { args, _ ->
+        vm.registerFunction(
+            "tagged",
+            MEventoFunctionSpec(
+                "tagged",
+                minArgs = 1,
+                maxArgs = 2,
+                tags = setOf("pure"),
+                args = listOf(MEventoArgSpec("message", "string")),
+            )
+        ) { args, _ ->
             args.firstOrNull()
         }
 
@@ -86,6 +96,47 @@ class MeventoRegistrationTest {
         assertEquals(1, spec?.minArgs)
         assertEquals(2, spec?.maxArgs)
         assertTrue(spec?.tags?.contains("pure") == true)
+        assertEquals("message", spec?.args?.first()?.name)
+        assertEquals("string", spec?.args?.first()?.type)
+    }
+
+    @Test
+    fun `Should validate registered function argument type metadata`() {
+        vm.registerFunction(
+            "text",
+            MEventoFunctionSpec(
+                "text",
+                minArgs = 1,
+                maxArgs = 1,
+                args = listOf(MEventoArgSpec("value", "string")),
+            )
+        ) { args, _ ->
+            args.firstOrNull()
+        }
+
+        val validation = vm.validate("text(12)")
+        assertFalse(validation.ok)
+        val validationError = validation.errors.first { it.code == "invalid_argument_type" }
+        assertEquals("text", validationError.name)
+        assertEquals(0, validationError.argIndex)
+        assertEquals("string", validationError.expectedType)
+        assertEquals("number", validationError.actualType)
+
+        val runtimeError = assertThrows<MEventoRuntimeError> {
+            vm.execute("value = 12; text(value)")
+        }
+        assertEquals("invalid_argument_type", runtimeError.code)
+        assertEquals("text", runtimeError.name)
+        assertEquals(0, runtimeError.argIndex)
+        assertEquals("string", runtimeError.expectedType)
+        assertEquals("number", runtimeError.actualType)
+
+        val tryError = vm.execute("value = 12; result = _try_(text(value)); result['error']") as Map<*, *>
+        assertEquals("invalid_argument_type", tryError["code"])
+        assertEquals("text", tryError["name"])
+        assertEquals(0, tryError["argIndex"])
+        assertEquals("string", tryError["expectedType"])
+        assertEquals("number", tryError["actualType"])
     }
 
     @Test
