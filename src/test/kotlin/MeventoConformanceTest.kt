@@ -1,4 +1,5 @@
 import com.ml.labs.MEvento
+import com.ml.labs.MEventoFunctionSpec
 import com.ml.labs.MEventoRuntimeError
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
@@ -32,7 +33,7 @@ class MeventoConformanceTest {
     @Test
     fun `v2 validation conformance corpus`() {
         readValidationCases().forEach { case ->
-            val result = MEvento.validate(case.source, case.functions)
+            val result = MEvento.validate(case.source, case.functionSpecs)
 
             assertEquals(case.ok, result.ok, case.id)
             if (!case.ok) {
@@ -73,12 +74,39 @@ class MeventoConformanceTest {
                 assertEquals(5, parts.size, "Invalid validation row: $line")
                 ValidationCase(
                     id = parts[0],
-                    functions = parts[1].split(",").filter { it.isNotBlank() && it != "-" }.toSet(),
+                    functionSpecs = parseFunctionSpecs(parts[1]),
                     ok = parts[2].toBooleanStrict(),
                     code = parts[3],
                     source = decodeEscapes(parts[4]),
                 )
             }
+    }
+
+    private fun parseFunctionSpecs(value: String): Map<String, MEventoFunctionSpec> {
+        if (value == "-") return emptyMap()
+        return value.split(",")
+            .filter { it.isNotBlank() }
+            .associate { entry ->
+                val parts = entry.split(":", limit = 2)
+                val name = parts[0]
+                if (parts.size == 1) {
+                    name to MEventoFunctionSpec(name)
+                } else {
+                    val (minArgs, maxArgs) = parseArity(parts[1])
+                    name to MEventoFunctionSpec(name, minArgs = minArgs, maxArgs = maxArgs)
+                }
+            }
+    }
+
+    private fun parseArity(value: String): Pair<Int?, Int?> {
+        val parts = value.split("..", limit = 2)
+        if (parts.size == 1) {
+            val exact = parts[0].toInt()
+            return exact to exact
+        }
+        val minArgs = parts[0].takeIf { it != "*" }?.toInt()
+        val maxArgs = parts[1].takeIf { it != "*" }?.toInt()
+        return minArgs to maxArgs
     }
 
     private fun assertValue(case: ConformanceCase, actual: Any?) {
@@ -124,7 +152,7 @@ class MeventoConformanceTest {
 
     data class ValidationCase(
         val id: String,
-        val functions: Set<String>,
+        val functionSpecs: Map<String, MEventoFunctionSpec>,
         val ok: Boolean,
         val code: String,
         val source: String,

@@ -1,8 +1,11 @@
 import com.ml.labs.MEvento
+import com.ml.labs.MEventoFunctionSpec
 import com.ml.labs.MEventoRuntimeError
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class MeventoRegistrationTest {
     var vm: MEvento = MEvento()
@@ -38,6 +41,22 @@ class MeventoRegistrationTest {
         vm.execute("argLog('Hi')").also {
             assertEquals("Hi", it)
         }
+    }
+
+    @Test
+    fun `Should validate registered function arity metadata`() {
+        vm.registerFunction("one", MEventoFunctionSpec("one", minArgs = 1, maxArgs = 1)) { args, _ ->
+            args.firstOrNull()
+        }
+
+        val validation = vm.validate("one()")
+        assertFalse(validation.ok)
+        assertTrue(validation.errors.any { it.code == "invalid_function_arity" })
+
+        val error = assertThrows<MEventoRuntimeError> {
+            vm.execute("one()")
+        }
+        assertTrue(error.message?.contains("expects 1 argument") == true)
     }
 
     @Test

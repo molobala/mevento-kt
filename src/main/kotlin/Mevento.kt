@@ -246,6 +246,35 @@ data class MEventoValidationResult(
     val errors: List<MEventoValidationError>,
 )
 
+data class MEventoFunctionSpec(
+    val name: String,
+    val minArgs: Int? = null,
+    val maxArgs: Int? = null,
+    val tags: Set<String> = emptySet(),
+) {
+    init {
+        require(minArgs == null || minArgs >= 0) { "minArgs must be greater than or equal to 0" }
+        require(maxArgs == null || maxArgs >= 0) { "maxArgs must be greater than or equal to 0" }
+        require(minArgs == null || maxArgs == null || minArgs <= maxArgs) { "minArgs must be less than or equal to maxArgs" }
+    }
+
+    fun acceptsArity(count: Int): Boolean {
+        if (minArgs != null && count < minArgs) return false
+        if (maxArgs != null && count > maxArgs) return false
+        return true
+    }
+
+    fun arityDescription(): String {
+        return when {
+            minArgs == null && maxArgs == null -> "any number of"
+            minArgs != null && maxArgs != null && minArgs == maxArgs -> minArgs.toString()
+            minArgs != null && maxArgs != null -> "$minArgs..$maxArgs"
+            minArgs != null -> "at least $minArgs"
+            else -> "at most $maxArgs"
+        }
+    }
+}
+
 data class RootAST(val body: List<AST>, val name: String, val source: String) : AST(1, 1) {
     override fun dump(): String {
         val builder = StringBuilder("Module $name Start {\n")
@@ -1459,11 +1488,14 @@ open class MEvento(
     internal val rootScope: MEventScope
     private var currentScope: MEventScope? = null
     internal val functionsRegistry: MutableMap<String, (List<Any?>, MEvento?) -> Any?>
+    internal val functionSpecs: MutableMap<String, MEventoFunctionSpec>
 
     init {
         this.rootScope = source?.rootScope ?: MEventScope("com.ml.labs.MEvento", mutableMapOf())
         this.functionsRegistry = source?.functionsRegistry ?: mutableMapOf()
+        this.functionSpecs = source?.functionSpecs ?: mutableMapOf()
         this.functionsRegistry.putAll(globalFunctionsRegistry)
+        this.functionSpecs.putAll(globalFunctionSpecs)
         currentScope = this.rootScope
     }
 
@@ -1506,8 +1538,13 @@ open class MEvento(
         return functionsRegistry[name]
     }
 
+    fun resolveFunctionSpec(name: String): MEventoFunctionSpec? {
+        return functionSpecs[name]
+    }
+
     fun copyAttributes(other: MEvento) {
         functionsRegistry.putAll(other.functionsRegistry)
+        functionSpecs.putAll(other.functionSpecs)
         rootScope.memory.putAll(other.rootScope.memory)
     }
 
@@ -1555,20 +1592,27 @@ open class MEvento(
 
 
     fun registerFunction(id: String, fn: (List<Any?>, MEvento?) -> Any?) {
+        registerFunction(id, MEventoFunctionSpec(id), fn)
+    }
+
+    fun registerFunction(id: String, spec: MEventoFunctionSpec, fn: (List<Any?>, MEvento?) -> Any?) {
         functionsRegistry[id] = fn
+        functionSpecs[id] = spec.copy(name = id)
     }
 
     fun unregisterFunction(id: String) {
         functionsRegistry.remove(id)
+        functionSpecs.remove(id)
     }
 
     fun validate(
         source: String,
         functions: Set<String>? = null,
+        functionSpecs: Map<String, MEventoFunctionSpec>? = null,
         cache: Boolean = false,
     ): MEventoValidationResult {
         val errors = mutableListOf<MEventoValidationError>()
-        val knownFunctions = functions ?: functionsRegistry.keys.toSet()
+        val knownFunctions = validationFunctionSpecs(functions, functionSpecs)
         try {
             validateNode(compile(source, cache), knownFunctions, errors)
         } catch (e: Throwable) {
@@ -1582,9 +1626,26 @@ open class MEvento(
         return MEventoValidationResult(errors.isEmpty(), errors)
     }
 
+    private fun validationFunctionSpecs(
+        functions: Set<String>?,
+        specs: Map<String, MEventoFunctionSpec>?,
+    ): Map<String, MEventoFunctionSpec> {
+        val known = linkedMapOf<String, MEventoFunctionSpec>()
+        if (functions == null && specs == null) {
+            known.putAll(functionSpecs)
+        }
+        functions?.forEach { name ->
+            known[name] = functionSpecs[name] ?: MEventoFunctionSpec(name)
+        }
+        specs?.forEach { (name, spec) ->
+            known[name] = spec.copy(name = name)
+        }
+        return known
+    }
+
     private fun validateNode(
         node: AST?,
-        knownFunctions: Set<String>,
+        knownFunctions: Map<String, MEventoFunctionSpec>,
         errors: MutableList<MEventoValidationError>,
         protectedByTry: Boolean = false,
     ) {
@@ -1647,7 +1708,7 @@ open class MEvento(
 
     private fun validateCallExpression(
         node: CallExpressionAST,
-        knownFunctions: Set<String>,
+        knownFunctions: Map<String, MEventoFunctionSpec>,
         errors: MutableList<MEventoValidationError>,
         protectedByTry: Boolean,
     ) {
@@ -1660,8 +1721,20 @@ open class MEvento(
             node.arguments.forEach { validateNode(it, knownFunctions, errors, protectedByTry = true) }
             return
         }
-        if (calleeName != null && !protectedByTry && !knownFunctions.contains(calleeName)) {
-            errors.add(validationError("unknown_function", node, "Unknown function '$calleeName'", calleeName))
+        if (calleeName != null && !protectedByTry) {
+            val spec = knownFunctions[calleeName]
+            if (spec == null) {
+                errors.add(validationError("unknown_function", node, "Unknown function '$calleeName'", calleeName))
+            } else if (!spec.acceptsArity(node.arguments.size)) {
+                errors.add(
+                    validationError(
+                        "invalid_function_arity",
+                        node,
+                        "Function '$calleeName' expects ${spec.arityDescription()} argument(s), got ${node.arguments.size}",
+                        calleeName,
+                    )
+                )
+            }
         }
         node.arguments.forEach { validateNode(it, knownFunctions, errors, protectedByTry) }
     }
@@ -1785,6 +1858,13 @@ open class MEvento(
         val fn = functionsRegistry[calleeName]
         if (fn == null) {
             throw runtimeError(node, "Unknown function '$calleeName'")
+        }
+        val spec = functionSpecs[calleeName]
+        if (spec != null && !spec.acceptsArity(args.size)) {
+            throw runtimeError(
+                node,
+                "Function '$calleeName' expects ${spec.arityDescription()} argument(s), got ${args.size}",
+            )
         }
         val argValues = args.map { visit(it) }.toList()
         val result = fn.invoke(argValues, this)
@@ -2121,6 +2201,7 @@ open class MEvento(
     companion object {
         val globalFunctionsRegistry: MutableMap<String, (List<Any?>, MEvento?) -> Any?> =
             mutableMapOf()
+        val globalFunctionSpecs: MutableMap<String, MEventoFunctionSpec> = mutableMapOf()
         val _cache: MutableMap<Int, AST> = mutableMapOf()
         fun compile(source: String, cache: Boolean = false): AST {
             val hash = source.hashCode()
@@ -2135,11 +2216,17 @@ open class MEvento(
         }
 
         fun register(id: String, fn: (List<Any?>, MEvento?) -> Any?) {
+            register(id, MEventoFunctionSpec(id), fn)
+        }
+
+        fun register(id: String, spec: MEventoFunctionSpec, fn: (List<Any?>, MEvento?) -> Any?) {
             globalFunctionsRegistry[id] = fn
+            globalFunctionSpecs[id] = spec.copy(name = id)
         }
 
         fun unregister(id: String) {
             globalFunctionsRegistry.remove(id)
+            globalFunctionSpecs.remove(id)
         }
 
         fun validate(
@@ -2147,7 +2234,15 @@ open class MEvento(
             functions: Set<String>,
             cache: Boolean = false,
         ): MEventoValidationResult {
-            return MEvento().validate(source, functions, cache)
+            return MEvento().validate(source, functions = functions, cache = cache)
+        }
+
+        fun validate(
+            source: String,
+            functionSpecs: Map<String, MEventoFunctionSpec>,
+            cache: Boolean = false,
+        ): MEventoValidationResult {
+            return MEvento().validate(source, functionSpecs = functionSpecs, cache = cache)
         }
 
         fun run(

@@ -42,5 +42,6 @@ tab-separated fields:
 id<TAB>known_functions<TAB>ok<TAB>expected_error_code<TAB>source
 ```
 
-`known_functions` is a comma-separated capability list. Use `-` when no specific
-error code is expected.
+`known_functions` is a comma-separated capability list. Entries may be bare
+names, or `name:min..max` when arity metadata is available. Use `*` for an
+unbounded side of the range, and `-` when no specific error code is expected.
