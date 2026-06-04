@@ -60,6 +60,34 @@ class MeventoRegistrationTest {
     }
 
     @Test
+    fun `Should expose instance function capabilities`() {
+        vm.registerFunction("tagged", MEventoFunctionSpec("tagged", minArgs = 1, maxArgs = 2, tags = setOf("pure"))) { args, _ ->
+            args.firstOrNull()
+        }
+
+        val spec = vm.capabilities()["tagged"]
+        assertEquals("tagged", spec?.name)
+        assertEquals(1, spec?.minArgs)
+        assertEquals(2, spec?.maxArgs)
+        assertTrue(spec?.tags?.contains("pure") == true)
+    }
+
+    @Test
+    fun `Should expose global function capabilities`() {
+        MEvento.register("globalCap", MEventoFunctionSpec("globalCap", maxArgs = 0, tags = setOf("io"))) { _, _ ->
+            true
+        }
+        try {
+            val spec = MEvento.capabilities()["globalCap"]
+            assertEquals("globalCap", spec?.name)
+            assertEquals(0, spec?.maxArgs)
+            assertTrue(spec?.tags?.contains("io") == true)
+        } finally {
+            MEvento.unregister("globalCap")
+        }
+    }
+
+    @Test
     fun `Should inject input for static run`() {
         MEvento.run("a + b", input = mapOf("a" to 12L, "b" to 23L)).also {
             assertEquals(35L, it)

@@ -1542,6 +1542,10 @@ open class MEvento(
         return functionSpecs[name]
     }
 
+    fun capabilities(): Map<String, MEventoFunctionSpec> {
+        return functionSpecs.toMap()
+    }
+
     fun copyAttributes(other: MEvento) {
         functionsRegistry.putAll(other.functionsRegistry)
         functionSpecs.putAll(other.functionSpecs)
@@ -2227,6 +2231,10 @@ open class MEvento(
         fun unregister(id: String) {
             globalFunctionsRegistry.remove(id)
             globalFunctionSpecs.remove(id)
+        }
+
+        fun capabilities(): Map<String, MEventoFunctionSpec> {
+            return globalFunctionSpecs.toMap()
         }
 
         fun validate(
