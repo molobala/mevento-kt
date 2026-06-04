@@ -29,6 +29,21 @@ class MeventoConformanceTest {
         }
     }
 
+    @Test
+    fun `v2 validation conformance corpus`() {
+        readValidationCases().forEach { case ->
+            val result = MEvento.validate(case.source, case.functions)
+
+            assertEquals(case.ok, result.ok, case.id)
+            if (!case.ok) {
+                assertTrue(
+                    result.errors.any { it.code == case.code },
+                    "${case.id}: expected validation error `${case.code}`, got ${result.errors}",
+                )
+            }
+        }
+    }
+
     private fun readCases(): List<ConformanceCase> {
         val file = File("conformance/v2_core.tsv")
         assertTrue(file.exists(), "Missing conformance corpus: ${file.absolutePath}")
@@ -43,6 +58,25 @@ class MeventoConformanceTest {
                     type = parts[1],
                     expected = decodeEscapes(parts[2]),
                     source = decodeEscapes(parts[3]),
+                )
+            }
+    }
+
+    private fun readValidationCases(): List<ValidationCase> {
+        val file = File("conformance/v2_validation.tsv")
+        assertTrue(file.exists(), "Missing validation corpus: ${file.absolutePath}")
+
+        return file.readLines()
+            .filter { it.isNotBlank() && !it.startsWith("#") }
+            .map { line ->
+                val parts = line.split("\t", limit = 5)
+                assertEquals(5, parts.size, "Invalid validation row: $line")
+                ValidationCase(
+                    id = parts[0],
+                    functions = parts[1].split(",").filter { it.isNotBlank() && it != "-" }.toSet(),
+                    ok = parts[2].toBooleanStrict(),
+                    code = parts[3],
+                    source = decodeEscapes(parts[4]),
                 )
             }
     }
@@ -85,6 +119,14 @@ class MeventoConformanceTest {
         val id: String,
         val type: String,
         val expected: String,
+        val source: String,
+    )
+
+    data class ValidationCase(
+        val id: String,
+        val functions: Set<String>,
+        val ok: Boolean,
+        val code: String,
         val source: String,
     )
 }

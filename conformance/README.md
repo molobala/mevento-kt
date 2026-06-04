@@ -34,3 +34,13 @@ escapes.
 
 Future v2 changes should add rows here first, then update each implementation
 until the same corpus passes everywhere.
+
+`v2_validation.tsv` covers preflight validation. Each non-comment row has five
+tab-separated fields:
+
+```text
+id<TAB>known_functions<TAB>ok<TAB>expected_error_code<TAB>source
+```
+
+`known_functions` is a comma-separated capability list. Use `-` when no specific
+error code is expected.

@@ -1,0 +1,5 @@
+# id	functions	ok	code	source
+validate.known_function	echo	true	-	echo(12)
+validate.strict_unknown	echo	false	unknown_function	missingFn()
+validate.try_unknown	echo	true	-	r = _try_(missingFn()); r['ok']
+validate.try_arity	echo	false	invalid_try_arity	_try_(echo(1), echo(2))

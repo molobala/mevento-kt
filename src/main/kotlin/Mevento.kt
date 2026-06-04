@@ -232,6 +232,20 @@ class MEventoRuntimeError(
     }
 }
 
+data class MEventoValidationError(
+    val code: String,
+    val message: String,
+    val name: String? = null,
+    val line: Int? = null,
+    val col: Int? = null,
+    val node: String? = null,
+)
+
+data class MEventoValidationResult(
+    val ok: Boolean,
+    val errors: List<MEventoValidationError>,
+)
+
 data class RootAST(val body: List<AST>, val name: String, val source: String) : AST(1, 1) {
     override fun dump(): String {
         val builder = StringBuilder("Module $name Start {\n")
@@ -1548,6 +1562,126 @@ open class MEvento(
         functionsRegistry.remove(id)
     }
 
+    fun validate(
+        source: String,
+        functions: Set<String>? = null,
+        cache: Boolean = false,
+    ): MEventoValidationResult {
+        val errors = mutableListOf<MEventoValidationError>()
+        val knownFunctions = functions ?: functionsRegistry.keys.toSet()
+        try {
+            validateNode(compile(source, cache), knownFunctions, errors)
+        } catch (e: Throwable) {
+            errors.add(
+                MEventoValidationError(
+                    code = "syntax_error",
+                    message = e.message ?: e.toString(),
+                )
+            )
+        }
+        return MEventoValidationResult(errors.isEmpty(), errors)
+    }
+
+    private fun validateNode(
+        node: AST?,
+        knownFunctions: Set<String>,
+        errors: MutableList<MEventoValidationError>,
+        protectedByTry: Boolean = false,
+    ) {
+        if (node == null) return
+        when (node) {
+            is RootAST -> node.body.forEach { validateNode(it, knownFunctions, errors, protectedByTry) }
+            is BlockStatementAST -> node.body.forEach { validateNode(it, knownFunctions, errors, protectedByTry) }
+            is AssignmentExpressionAST -> {
+                validateNode(node.identifier, knownFunctions, errors, protectedByTry)
+                validateNode(node.init, knownFunctions, errors, protectedByTry)
+            }
+            is ExpressionStatementAST -> validateNode(node.expression, knownFunctions, errors, protectedByTry)
+            is CallExpressionAST -> validateCallExpression(node, knownFunctions, errors, protectedByTry)
+            is BinaryExpressionAST -> {
+                validateNode(node.left, knownFunctions, errors, protectedByTry)
+                validateNode(node.right, knownFunctions, errors, protectedByTry)
+            }
+            is UnaryExpressionAST -> validateNode(node.argument, knownFunctions, errors, protectedByTry)
+            is IfStatementAST -> {
+                validateNode(node.test, knownFunctions, errors, protectedByTry)
+                validateNode(node.consequent, knownFunctions, errors, protectedByTry)
+                validateNode(node.alternate, knownFunctions, errors, protectedByTry)
+            }
+            is LogicalExpressionAST -> {
+                validateNode(node.left, knownFunctions, errors, protectedByTry)
+                validateNode(node.right, knownFunctions, errors, protectedByTry)
+            }
+            is IndexAccessorAST -> {
+                validateNode(node.owner, knownFunctions, errors, protectedByTry)
+                validateNode(node.key, knownFunctions, errors, protectedByTry)
+            }
+            is ObjectExpression -> node.properties.forEach { validateNode(it, knownFunctions, errors, protectedByTry) }
+            is ObjectProperty -> {
+                validateNode(node.key, knownFunctions, errors, protectedByTry)
+                validateNode(node.value, knownFunctions, errors, protectedByTry)
+            }
+            is ArrayExpression -> node.elements.forEach { validateNode(it, knownFunctions, errors, protectedByTry) }
+            is WhileLoopStatement -> {
+                validateNode(node.test, knownFunctions, errors, protectedByTry)
+                validateNode(node.body, knownFunctions, errors, protectedByTry)
+            }
+            is ForLoopStatement -> {
+                validateNode(node.init, knownFunctions, errors, protectedByTry)
+                validateNode(node.test, knownFunctions, errors, protectedByTry)
+                validateNode(node.update, knownFunctions, errors, protectedByTry)
+                validateNode(node.body, knownFunctions, errors, protectedByTry)
+            }
+            is ForOfStatement -> {
+                validateNode(node.identifier, knownFunctions, errors, protectedByTry)
+                validateNode(node.collection, knownFunctions, errors, protectedByTry)
+                validateNode(node.body, knownFunctions, errors, protectedByTry)
+            }
+            is TupleExpression -> {
+                validateNode(node.first, knownFunctions, errors, protectedByTry)
+                validateNode(node.second, knownFunctions, errors, protectedByTry)
+            }
+            is ReturnAST -> validateNode(node.value, knownFunctions, errors, protectedByTry)
+        }
+    }
+
+    private fun validateCallExpression(
+        node: CallExpressionAST,
+        knownFunctions: Set<String>,
+        errors: MutableList<MEventoValidationError>,
+        protectedByTry: Boolean,
+    ) {
+        val callee = node.callee as? IdentifierAST
+        val calleeName = callee?.value
+        if (calleeName == "_try_") {
+            if (node.arguments.size != 1) {
+                errors.add(validationError("invalid_try_arity", node, "_try_ expects exactly one expression", "_try_"))
+            }
+            node.arguments.forEach { validateNode(it, knownFunctions, errors, protectedByTry = true) }
+            return
+        }
+        if (calleeName != null && !protectedByTry && !knownFunctions.contains(calleeName)) {
+            errors.add(validationError("unknown_function", node, "Unknown function '$calleeName'", calleeName))
+        }
+        node.arguments.forEach { validateNode(it, knownFunctions, errors, protectedByTry) }
+    }
+
+    private fun validationError(
+        code: String,
+        node: AST,
+        message: String,
+        name: String? = null,
+    ): MEventoValidationError {
+        return MEventoValidationError(
+            code = code,
+            message = message,
+            name = name,
+            line = node.line,
+            col = node.col,
+            node = node::class.simpleName,
+        )
+    }
+
     private fun visit(node: AST): Any? {
         val methodName = "visit${node::class.simpleName}"
         val method = this::class.java.declaredMethods.find { it.name == methodName }
@@ -2006,6 +2140,14 @@ open class MEvento(
 
         fun unregister(id: String) {
             globalFunctionsRegistry.remove(id)
+        }
+
+        fun validate(
+            source: String,
+            functions: Set<String>,
+            cache: Boolean = false,
+        ): MEventoValidationResult {
+            return MEvento().validate(source, functions, cache)
         }
 
         fun run(
