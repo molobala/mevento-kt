@@ -188,6 +188,20 @@ class MeventoRegistrationTest {
 
         val missingOutput = vm.validateManifest("value = add(base, 2)", manifest)
         assertTrue(missingOutput.errors.any { it.code == "missing_output" && it.name == "result" })
+
+        val dotManifest = MEventoScriptManifest(
+            inputs = listOf(MEventoValueSpec("user", "object")),
+            outputs = listOf(MEventoValueSpec("result")),
+        )
+        val validDotAccess = vm.validateManifest("result = user.name", dotManifest)
+        assertTrue(validDotAccess.ok)
+
+        val missingOwner = vm.validateManifest(
+            "result = user.name",
+            dotManifest.copy(inputs = listOf(MEventoValueSpec("name", "string"))),
+        )
+        assertTrue(missingOwner.errors.any { it.code == "unknown_input" && it.name == "user" })
+        assertFalse(missingOwner.errors.any { it.code == "unknown_input" && it.name == "name" })
     }
 
     @Test

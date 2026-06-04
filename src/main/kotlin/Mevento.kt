@@ -118,7 +118,7 @@ enum class TokenType {
     lbrace, rbrace, lbracket, rbracket, great, greatEq, less, lessEq, eqeq,
     IF, ELSE, TRUE, FALSE, NULL, not, notEq, and, or, plus, minus, div, mult, mod,
     invalid, colon, WHILE_TILL, FOR_LOOP, up, down, WITH, IN, TILL, BREAK,
-    CONTINUE, nullity, RETURN
+    CONTINUE, nullity, RETURN, dot
 }
 
 class Token(val type: TokenType, val value: Any?, var line: Int? = null, var col: Int? = null) {
@@ -174,6 +174,7 @@ object Chars {
     val colon: Char get() = ':'
     val questionMark: Char get() = '?'
     val shebang: Char get() = '#'
+    val dot: Char get() = '.'
 }
 
 class LexerDictionary(val lang: String, keywords: Map<String, String>) {
@@ -733,11 +734,25 @@ class Parser(private val lexer: Lexer) {
 
     private fun _tryParsingMemberExpression(n: AST): AST {
         var node = n
-        while (currentToken!!.type == TokenType.lbracket) {
-            _eat(TokenType.lbracket)
-            val key = _expression()
-            node = IndexAccessorAST(node, key, computed = true)
-            _eat(TokenType.rbracket)
+        while (currentToken!!.type == TokenType.lbracket || currentToken!!.type == TokenType.dot) {
+            if (currentToken!!.type == TokenType.lbracket) {
+                _eat(TokenType.lbracket)
+                val key = _expression()
+                node = IndexAccessorAST(node, key, computed = true)
+                _eat(TokenType.rbracket)
+            } else {
+                _eat(TokenType.dot)
+                val propertyToken = currentToken!!
+                if (propertyToken.type != TokenType.id) {
+                    error(propertyToken)
+                }
+                val key = LiteralAST(
+                    Token(TokenType.stringConst, propertyToken.value, propertyToken.line, propertyToken.col),
+                    propertyToken.value as String
+                )
+                _eat(TokenType.id)
+                node = IndexAccessorAST(node, key, computed = false)
+            }
         }
         return node
     }
@@ -1499,6 +1514,10 @@ class Lexer(val source: String) {
             if (_currentChar == Chars.colon) {
                 advance()
                 return Token(TokenType.colon, ":", lastL, lastC)
+            }
+            if (_currentChar == Chars.dot) {
+                advance()
+                return Token(TokenType.dot, ".", lastL, lastC)
             }
             if (_currentChar == Chars.not) {
                 advance()

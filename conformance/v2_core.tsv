@@ -7,6 +7,12 @@ null.coalesce.string	string	fallback	null ?? 'fallback'
 logical.truthiness.false_and	boolean	false	0 && echo('unused')
 logical.truthiness.or	boolean	true	0 || 12
 object.literal.index	string	molo	obj = {name: 'molo'}; obj['name']
+object.dot.read	string	molo	obj = {name: 'molo'}; obj.name
+object.dot.chain	string	ok	obj = {profile: {email: 'ok'}}; obj.profile.email
+object.dot.assignment	string	awa	obj = {}; obj.name = 'awa'; obj['name']
+object.dot.call_result	string	molo	echo({name: 'molo'}).name
+object.dot.bracket_mix	number	3	obj = {items: [1, 2, 3]}; obj.items[2]
+object.dot.missing	null	null	obj = {}; obj.missing
 array.literal.index	string	test	arr = ['molo', 'test']; arr[1]
 index.assignment	number	23	arr = [0, 1]; arr[0] = 23; arr[0]
 block.scope.parent_assignment	number	12	a = 0; if(true) { a = 12; b = 1; }; a
