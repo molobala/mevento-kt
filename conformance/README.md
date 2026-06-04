@@ -26,6 +26,9 @@ escapes.
 - Arrays, maps, index access, and index assignment use host-native collection
   values.
 - Host functions receive already evaluated arguments.
+- `_try_(expression)` evaluates its single expression lazily and returns a
+  result map: `{ok: true, value: ..., error: null}` or
+  `{ok: false, value: null, error: {message, line, col, node}}`.
 - English, French, and Bambara keyword dictionaries must preserve equivalent
   behavior.
 

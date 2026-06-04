@@ -27,3 +27,7 @@ language.fr.number	number	3	<fr>\ns = 0;pour a = 0 jusqua 2 mont avec 1 { s = s 
 language.bm.number	number	3	<bm>\ns = 0;seginka a = 0 kata 2 kay niin 1 { s = s + 1; }\ns
 runtime.error.divide_by_zero	error	Invalid division by 0	a = 1; b = 0; a / b
 runtime.error.unknown_function	error	Unknown function 'missingFn'	missingFn()
+try.success.value	number	35	r = _try_(echo(12 + 23)); r['value']
+try.error.ok	boolean	false	r = _try_(missingFn()); r['ok']
+try.error.message	string	Unknown function 'missingFn'	r = _try_(missingFn()); r['error']['message']
+try.error.continues	number	2	r = _try_(missingFn()); a = 2; a

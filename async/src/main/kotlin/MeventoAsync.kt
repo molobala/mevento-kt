@@ -116,6 +116,20 @@ class MEventoAsync(
         val call = node as CallExpressionAST
         return async {
             val callee = call.callee as IdentifierAST
+            if (callee.value == "_try_") {
+                if (call.arguments.size != 1) {
+                    throw runtimeError(call, "_try_ expects exactly one expression")
+                }
+                return@async try {
+                    when (val value = visit(call.arguments[0])?.await()) {
+                        is LoopControl -> value
+                        is ReturnBranch -> value
+                        else -> successResult(value)
+                    }
+                } catch (e: MEventoRuntimeError) {
+                    errorResult(e)
+                }
+            }
             val fn = resolveFunction(callee.value)
                 ?: throw runtimeError(call, "Unknown function '${callee.value}'")
             val argValues = call.arguments.map { visit(it) as Deferred<*> }.awaitAll()

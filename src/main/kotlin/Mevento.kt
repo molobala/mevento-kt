@@ -1467,6 +1467,23 @@ open class MEvento(
         return MEventoRuntimeError.from(node, cause)
     }
 
+    protected fun successResult(value: Any?): Map<String, Any?> {
+        return mapOf("ok" to true, "value" to value, "error" to null)
+    }
+
+    protected fun errorResult(error: MEventoRuntimeError): Map<String, Any?> {
+        return mapOf(
+            "ok" to false,
+            "value" to null,
+            "error" to mapOf(
+                "message" to error.detail,
+                "line" to error.line,
+                "col" to error.col,
+                "node" to error.nodeType,
+            ),
+        )
+    }
+
     protected fun resolve(name: String): Any? {
         return currentScope?.resolve(name)
     }
@@ -1617,6 +1634,20 @@ open class MEvento(
         val callee = (node as CallExpressionAST).callee as IdentifierAST
         val args = node.arguments
         val calleeName = callee.value
+        if (calleeName == "_try_") {
+            if (args.size != 1) {
+                throw runtimeError(node, "_try_ expects exactly one expression")
+            }
+            return try {
+                when (val value = visit(args[0])) {
+                    is LoopControl -> value
+                    is ReturnBranch -> value
+                    else -> successResult(value)
+                }
+            } catch (e: MEventoRuntimeError) {
+                errorResult(e)
+            }
+        }
         val fn = functionsRegistry[calleeName]
         if (fn == null) {
             throw runtimeError(node, "Unknown function '$calleeName'")
