@@ -134,12 +134,32 @@ class MEventoAsync(
             }
             val fn = resolveFunction(callee.value)
                 ?: throw runtimeError(call, "Unknown function '${callee.value}'")
+            val spec = resolveFunctionSpec(callee.value)
             val argValues = call.arguments.map { visit(it) as Deferred<*> }.awaitAll()
-            when (val result = fn.invoke(argValues, this@MEventoAsync)) {
+            recordTrace(
+                "call",
+                call,
+                callee.value,
+                mapOf(
+                    "argCount" to argValues.size,
+                    "returnType" to (spec?.returnType ?: "any"),
+                )
+            )
+            val value = when (val result = fn.invoke(argValues, this@MEventoAsync)) {
                 is Deferred<*> -> result.await()
                 is CompletionStage<*> -> result.await()
                 else -> result
             }
+            recordTrace(
+                "call_result",
+                call,
+                callee.value,
+                mapOf(
+                    "returnType" to (spec?.returnType ?: "any"),
+                    "actualType" to tracedValueType(value),
+                )
+            )
+            value
         }
     }
 
@@ -478,6 +498,7 @@ class MEventoAsync(
         val module = compile(source, cache)
         input?.forEach { (key, value) -> this._changeVariable(key, value) }
         resetExecutionBudget()
+        clearTrace()
         return visit(module) as Deferred<Any?>
     }
 

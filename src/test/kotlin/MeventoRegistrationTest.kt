@@ -3,6 +3,8 @@ import com.ml.labs.MEventoArgSpec
 import com.ml.labs.MEventoFunctionSpec
 import com.ml.labs.MEventoOptions
 import com.ml.labs.MEventoRuntimeError
+import com.ml.labs.MEventoScriptManifest
+import com.ml.labs.MEventoValueSpec
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import kotlin.test.assertEquals
@@ -87,6 +89,7 @@ class MeventoRegistrationTest {
                 maxArgs = 2,
                 tags = setOf("pure"),
                 args = listOf(MEventoArgSpec("message", "string")),
+                returnType = "string",
             )
         ) { args, _ ->
             args.firstOrNull()
@@ -99,6 +102,7 @@ class MeventoRegistrationTest {
         assertTrue(spec?.tags?.contains("pure") == true)
         assertEquals("message", spec?.args?.first()?.name)
         assertEquals("string", spec?.args?.first()?.type)
+        assertEquals("string", spec?.returnType)
     }
 
     @Test
@@ -156,6 +160,61 @@ class MeventoRegistrationTest {
         assertEquals("execution_budget_exceeded", tryError["code"])
         assertEquals(2L, tryError["maxSteps"])
         assertTrue((tryError["stepCount"] as Long) > 2L)
+    }
+
+    @Test
+    fun `Should validate scripts against a manifest`() {
+        val manifest = MEventoScriptManifest(
+            functions = mapOf(
+                "add" to MEventoFunctionSpec(
+                    "add",
+                    minArgs = 2,
+                    maxArgs = 2,
+                    returnType = "number",
+                )
+            ),
+            inputs = listOf(MEventoValueSpec("base", "number")),
+            outputs = listOf(MEventoValueSpec("result", "number")),
+        )
+
+        val valid = vm.validateManifest("result = add(base, 2)", manifest)
+        assertTrue(valid.ok)
+
+        val invalid = vm.validateManifest("result = 'bad'; other(missing)", manifest)
+        assertFalse(invalid.ok)
+        assertTrue(invalid.errors.any { it.code == "unknown_function" && it.name == "other" })
+        assertTrue(invalid.errors.any { it.code == "unknown_input" && it.name == "missing" })
+        assertTrue(invalid.errors.any { it.code == "invalid_output_type" && it.name == "result" && it.expectedType == "number" && it.actualType == "string" })
+
+        val missingOutput = vm.validateManifest("value = add(base, 2)", manifest)
+        assertTrue(missingOutput.errors.any { it.code == "missing_output" && it.name == "result" })
+    }
+
+    @Test
+    fun `Should record trace events when trace mode is enabled`() {
+        val traced = MEvento(options = MEventoOptions(trace = true))
+        traced.registerFunction(
+            "text",
+            MEventoFunctionSpec(
+                "text",
+                minArgs = 1,
+                maxArgs = 1,
+                args = listOf(MEventoArgSpec("value", "string")),
+                returnType = "string",
+            )
+        ) { args, _ ->
+            args.firstOrNull()
+        }
+
+        assertEquals("ok", traced.execute("text('ok')"))
+        val trace = traced.trace()
+        assertTrue(trace.any { it.kind == "visit" && it.node == "CallExpressionAST" })
+        val call = trace.first { it.kind == "call" && it.name == "text" }
+        assertEquals(1, call.detail["argCount"])
+        assertEquals("string", call.detail["returnType"])
+        val result = trace.first { it.kind == "call_result" && it.name == "text" }
+        assertEquals("string", result.detail["returnType"])
+        assertEquals("string", result.detail["actualType"])
     }
 
     @Test

@@ -287,10 +287,12 @@ data class MEventoFunctionSpec(
     val maxArgs: Int? = null,
     val tags: Set<String> = emptySet(),
     val args: List<MEventoArgSpec> = emptyList(),
+    val returnType: String = "any",
 ) {
     init {
         require(minArgs == null || minArgs >= 0) { "minArgs must be greater than or equal to 0" }
         require(maxArgs == null || maxArgs >= 0) { "maxArgs must be greater than or equal to 0" }
+        require(returnType in MEventoArgSpec.SUPPORTED_TYPES) { "Unsupported return type '$returnType'" }
         val effectiveMinArgs = effectiveMinArgs()
         require(effectiveMinArgs == null || maxArgs == null || effectiveMinArgs <= maxArgs) { "minArgs must be less than or equal to maxArgs" }
     }
@@ -335,11 +337,38 @@ data class MEventoArgSpec(
 
 data class MEventoOptions(
     val maxSteps: Long? = null,
+    val trace: Boolean = false,
 ) {
     init {
         require(maxSteps == null || maxSteps > 0) { "maxSteps must be greater than 0" }
     }
 }
+
+data class MEventoValueSpec(
+    val name: String,
+    val type: String = "any",
+    val required: Boolean = true,
+) {
+    init {
+        require(type in MEventoArgSpec.SUPPORTED_TYPES) { "Unsupported value type '$type'" }
+    }
+}
+
+data class MEventoScriptManifest(
+    val functions: Map<String, MEventoFunctionSpec>? = null,
+    val inputs: List<MEventoValueSpec> = emptyList(),
+    val outputs: List<MEventoValueSpec> = emptyList(),
+)
+
+data class MEventoTraceEvent(
+    val kind: String,
+    val line: Int? = null,
+    val col: Int? = null,
+    val node: String? = null,
+    val name: String? = null,
+    val stepCount: Long? = null,
+    val detail: Map<String, Any?> = emptyMap(),
+)
 
 data class RootAST(val body: List<AST>, val name: String, val source: String) : AST(1, 1) {
     override fun dump(): String {
@@ -1557,6 +1586,7 @@ open class MEvento(
     internal val functionsRegistry: MutableMap<String, (List<Any?>, MEvento?) -> Any?>
     internal val functionSpecs: MutableMap<String, MEventoFunctionSpec>
     private var stepCount: Long = 0
+    private val traceEvents = mutableListOf<MEventoTraceEvent>()
 
     val executionStepCount: Long
         get() = stepCount
@@ -1624,12 +1654,41 @@ open class MEvento(
         )
     }
 
+    fun trace(): List<MEventoTraceEvent> {
+        return traceEvents.toList()
+    }
+
+    protected fun clearTrace() {
+        traceEvents.clear()
+    }
+
+    protected fun recordTrace(
+        kind: String,
+        node: AST,
+        name: String? = null,
+        detail: Map<String, Any?> = emptyMap(),
+    ) {
+        if (!options.trace) return
+        traceEvents.add(
+            MEventoTraceEvent(
+                kind = kind,
+                line = node.line,
+                col = node.col,
+                node = node::class.simpleName,
+                name = name,
+                stepCount = stepCount,
+                detail = detail,
+            )
+        )
+    }
+
     protected fun resetExecutionBudget() {
         stepCount = 0
     }
 
     protected fun checkExecutionBudget(node: AST) {
         stepCount += 1
+        recordTrace("visit", node)
         val maxSteps = options.maxSteps ?: return
         if (stepCount > maxSteps) {
             throw runtimeError(
@@ -1731,6 +1790,28 @@ open class MEvento(
         val knownFunctions = validationFunctionSpecs(functions, functionSpecs)
         try {
             validateNode(compile(source, cache), knownFunctions, errors)
+        } catch (e: Throwable) {
+            errors.add(
+                MEventoValidationError(
+                    code = "syntax_error",
+                    message = e.message ?: e.toString(),
+                )
+            )
+        }
+        return MEventoValidationResult(errors.isEmpty(), errors)
+    }
+
+    fun validateManifest(
+        source: String,
+        manifest: MEventoScriptManifest,
+        cache: Boolean = false,
+    ): MEventoValidationResult {
+        val errors = mutableListOf<MEventoValidationError>()
+        val knownFunctions = validationFunctionSpecs(null, manifest.functions)
+        try {
+            val module = compile(source, cache)
+            validateNode(module, knownFunctions, errors)
+            validateManifestNode(module, manifest, errors)
         } catch (e: Throwable) {
             errors.add(
                 MEventoValidationError(
@@ -1915,7 +1996,139 @@ open class MEvento(
         }
     }
 
+    protected fun tracedValueType(value: Any?): String {
+        return valueType(value)
+    }
+
     private fun argumentTypeMatches(spec: MEventoArgSpec, actualType: String): Boolean {
+        if (spec.type == "any") return true
+        if (!spec.required && actualType == "null") return true
+        return spec.type == actualType
+    }
+
+    private data class ManifestAnalysis(
+        val knownInputs: MutableSet<String>,
+        val assigned: MutableSet<String> = mutableSetOf(),
+        val assignedTypes: MutableMap<String, String> = mutableMapOf(),
+        val reportedInputs: MutableSet<String> = mutableSetOf(),
+    )
+
+    private fun validateManifestNode(
+        module: AST,
+        manifest: MEventoScriptManifest,
+        errors: MutableList<MEventoValidationError>,
+    ) {
+        val analysis = ManifestAnalysis(manifest.inputs.mapTo(mutableSetOf()) { it.name })
+        analyzeManifestNode(module, analysis, errors)
+        manifest.outputs.forEach { output ->
+            if (output.required && output.name !in analysis.assigned) {
+                errors.add(validationError("missing_output", module, "Required output '${output.name}' is not assigned", output.name))
+                return@forEach
+            }
+            val actualType = analysis.assignedTypes[output.name] ?: return@forEach
+            if (!valueSpecTypeMatches(output, actualType)) {
+                errors.add(
+                    validationError(
+                        "invalid_output_type",
+                        module,
+                        "Output '${output.name}' expects ${output.type}, got $actualType",
+                        output.name,
+                        expectedType = output.type,
+                        actualType = actualType,
+                    )
+                )
+            }
+        }
+    }
+
+    private fun analyzeManifestNode(
+        node: AST?,
+        analysis: ManifestAnalysis,
+        errors: MutableList<MEventoValidationError>,
+    ) {
+        if (node == null) return
+        when (node) {
+            is RootAST -> node.body.forEach { analyzeManifestNode(it, analysis, errors) }
+            is BlockStatementAST -> node.body.forEach { analyzeManifestNode(it, analysis, errors) }
+            is AssignmentExpressionAST -> {
+                analyzeManifestNode(node.init, analysis, errors)
+                if (node.identifier is IndexAccessorAST) {
+                    analyzeManifestNode(node.identifier, analysis, errors)
+                }
+                markAssignedTarget(node.identifier, staticArgumentType(node.init), analysis)
+            }
+            is ExpressionStatementAST -> analyzeManifestNode(node.expression, analysis, errors)
+            is CallExpressionAST -> node.arguments.forEach { analyzeManifestNode(it, analysis, errors) }
+            is BinaryExpressionAST -> {
+                analyzeManifestNode(node.left, analysis, errors)
+                analyzeManifestNode(node.right, analysis, errors)
+            }
+            is UnaryExpressionAST -> analyzeManifestNode(node.argument, analysis, errors)
+            is IfStatementAST -> {
+                analyzeManifestNode(node.test, analysis, errors)
+                analyzeManifestNode(node.consequent, analysis, errors)
+                analyzeManifestNode(node.alternate, analysis, errors)
+            }
+            is LogicalExpressionAST -> {
+                analyzeManifestNode(node.left, analysis, errors)
+                analyzeManifestNode(node.right, analysis, errors)
+            }
+            is IndexAccessorAST -> {
+                analyzeManifestNode(node.owner, analysis, errors)
+                analyzeManifestNode(node.key, analysis, errors)
+            }
+            is ObjectExpression -> node.properties.forEach { analyzeManifestNode(it, analysis, errors) }
+            is ObjectProperty -> {
+                analyzeManifestNode(node.key, analysis, errors)
+                analyzeManifestNode(node.value, analysis, errors)
+            }
+            is ArrayExpression -> node.elements.forEach { analyzeManifestNode(it, analysis, errors) }
+            is WhileLoopStatement -> {
+                analyzeManifestNode(node.test, analysis, errors)
+                analyzeManifestNode(node.body, analysis, errors)
+            }
+            is ForLoopStatement -> {
+                analyzeManifestNode(node.init, analysis, errors)
+                analyzeManifestNode(node.test, analysis, errors)
+                analyzeManifestNode(node.body, analysis, errors)
+                analyzeManifestNode(node.update, analysis, errors)
+            }
+            is ForOfStatement -> {
+                analyzeManifestNode(node.collection, analysis, errors)
+                markAssignedTarget(node.identifier, null, analysis)
+                analyzeManifestNode(node.body, analysis, errors)
+            }
+            is TupleExpression -> {
+                analyzeManifestNode(node.first, analysis, errors)
+                analyzeManifestNode(node.second, analysis, errors)
+            }
+            is ReturnAST -> analyzeManifestNode(node.value, analysis, errors)
+            is IdentifierAST -> {
+                if (node.value !in analysis.knownInputs && node.value !in analysis.assigned && analysis.reportedInputs.add(node.value)) {
+                    errors.add(validationError("unknown_input", node, "Unknown input '${node.value}'", node.value))
+                }
+            }
+        }
+    }
+
+    private fun markAssignedTarget(
+        node: AST,
+        assignedType: String?,
+        analysis: ManifestAnalysis,
+    ) {
+        when (node) {
+            is IdentifierAST -> {
+                analysis.assigned.add(node.value)
+                assignedType?.let { analysis.assignedTypes[node.value] = it }
+            }
+            is TupleExpression -> {
+                markAssignedTarget(node.first, null, analysis)
+                markAssignedTarget(node.second, null, analysis)
+            }
+        }
+    }
+
+    private fun valueSpecTypeMatches(spec: MEventoValueSpec, actualType: String): Boolean {
         if (spec.type == "any") return true
         if (!spec.required && actualType == "null") return true
         return spec.type == actualType
@@ -2083,7 +2296,25 @@ open class MEvento(
         if (spec != null) {
             validateRuntimeArgumentTypes(node, spec, argValues)
         }
+        recordTrace(
+            "call",
+            node,
+            calleeName,
+            mapOf(
+                "argCount" to argValues.size,
+                "returnType" to (spec?.returnType ?: "any"),
+            )
+        )
         val result = fn.invoke(argValues, this)
+        recordTrace(
+            "call_result",
+            node,
+            calleeName,
+            mapOf(
+                "returnType" to (spec?.returnType ?: "any"),
+                "actualType" to tracedValueType(result),
+            )
+        )
         return result
     }
 
@@ -2434,6 +2665,7 @@ open class MEvento(
         val module = compile(source, cache)
         input?.forEach { (key, value) -> this._changeVariable(key, value) }
         resetExecutionBudget()
+        clearTrace()
         return visit(module)
     }
 
@@ -2486,6 +2718,14 @@ open class MEvento(
             cache: Boolean = false,
         ): MEventoValidationResult {
             return MEvento().validate(source, functionSpecs = functionSpecs, cache = cache)
+        }
+
+        fun validateManifest(
+            source: String,
+            manifest: MEventoScriptManifest,
+            cache: Boolean = false,
+        ): MEventoValidationResult {
+            return MEvento().validateManifest(source, manifest, cache = cache)
         }
 
         fun run(
