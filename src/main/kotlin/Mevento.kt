@@ -1595,6 +1595,8 @@ open class MEvento(
         this.rootScope = source?.rootScope ?: MEventScope("com.ml.labs.MEvento", mutableMapOf())
         this.functionsRegistry = source?.functionsRegistry ?: mutableMapOf()
         this.functionSpecs = source?.functionSpecs ?: mutableMapOf()
+        this.functionsRegistry.putAll(builtInFunctionsRegistry)
+        this.functionSpecs.putAll(builtInFunctionSpecs)
         this.functionsRegistry.putAll(globalFunctionsRegistry)
         this.functionSpecs.putAll(globalFunctionSpecs)
         currentScope = this.rootScope
@@ -1828,6 +1830,7 @@ open class MEvento(
         specs: Map<String, MEventoFunctionSpec>?,
     ): Map<String, MEventoFunctionSpec> {
         val known = linkedMapOf<String, MEventoFunctionSpec>()
+        known.putAll(builtInFunctionSpecs)
         if (functions == null && specs == null) {
             known.putAll(functionSpecs)
         }
@@ -2670,10 +2673,129 @@ open class MEvento(
     }
 
     companion object {
+        private val builtInFunctionSpecs: Map<String, MEventoFunctionSpec> = linkedMapOf(
+            "_ok_" to MEventoFunctionSpec(
+                "_ok_",
+                minArgs = 1,
+                maxArgs = 1,
+                args = listOf(MEventoArgSpec("result")),
+                returnType = "boolean",
+            ),
+            "_err_" to MEventoFunctionSpec(
+                "_err_",
+                minArgs = 1,
+                maxArgs = 1,
+                args = listOf(MEventoArgSpec("result")),
+                returnType = "boolean",
+            ),
+            "_value_" to MEventoFunctionSpec(
+                "_value_",
+                minArgs = 1,
+                maxArgs = 2,
+                args = listOf(
+                    MEventoArgSpec("result"),
+                    MEventoArgSpec("fallback", required = false),
+                ),
+                returnType = "any",
+            ),
+            "_error_" to MEventoFunctionSpec(
+                "_error_",
+                minArgs = 1,
+                maxArgs = 1,
+                args = listOf(MEventoArgSpec("result")),
+                returnType = "object",
+            ),
+            "_code_" to MEventoFunctionSpec(
+                "_code_",
+                minArgs = 1,
+                maxArgs = 1,
+                args = listOf(MEventoArgSpec("result")),
+                returnType = "string",
+            ),
+            "_message_" to MEventoFunctionSpec(
+                "_message_",
+                minArgs = 1,
+                maxArgs = 1,
+                args = listOf(MEventoArgSpec("result")),
+                returnType = "string",
+            ),
+            "_unwrap_" to MEventoFunctionSpec(
+                "_unwrap_",
+                minArgs = 1,
+                maxArgs = 1,
+                args = listOf(MEventoArgSpec("result")),
+                returnType = "any",
+            ),
+        )
+        private val builtInFunctionsRegistry: Map<String, (List<Any?>, MEvento?) -> Any?> = mapOf(
+            "_ok_" to { args, _ ->
+                tryResultOk(args.getOrNull(0))
+            },
+            "_err_" to { args, _ ->
+                !tryResultOk(args.getOrNull(0))
+            },
+            "_value_" to { args, _ ->
+                if (tryResultOk(args.getOrNull(0))) {
+                    (args.getOrNull(0) as? Map<*, *>)?.get("value")
+                } else {
+                    args.getOrNull(1)
+                }
+            },
+            "_error_" to { args, _ ->
+                tryResultError(args.getOrNull(0))
+            },
+            "_code_" to { args, _ ->
+                tryResultError(args.getOrNull(0))?.get("code")
+            },
+            "_message_" to { args, _ ->
+                tryResultError(args.getOrNull(0))?.get("message")
+            },
+            "_unwrap_" to { args, _ ->
+                val result = args.getOrNull(0)
+                if (tryResultOk(result)) {
+                    (result as? Map<*, *>)?.get("value")
+                } else {
+                    throw runtimeErrorFromTryResult(result)
+                }
+            },
+        )
         val globalFunctionsRegistry: MutableMap<String, (List<Any?>, MEvento?) -> Any?> =
             mutableMapOf()
         val globalFunctionSpecs: MutableMap<String, MEventoFunctionSpec> = mutableMapOf()
         val _cache: MutableMap<Int, AST> = mutableMapOf()
+
+        private fun tryResultOk(value: Any?): Boolean {
+            return (value as? Map<*, *>)?.get("ok") == true
+        }
+
+        private fun tryResultError(value: Any?): Map<*, *>? {
+            val result = value as? Map<*, *> ?: return null
+            if (result["ok"] != false) return null
+            return result["error"] as? Map<*, *>
+        }
+
+        private fun runtimeErrorFromTryResult(value: Any?): MEventoRuntimeError {
+            val error = tryResultError(value)
+            fun intValue(key: String): Int? = (error?.get(key) as? Number)?.toInt()
+            fun longValue(key: String): Long? = (error?.get(key) as? Number)?.toLong()
+            return MEventoRuntimeError(
+                detail = error?.get("message") as? String ?: "Cannot unwrap failed _try_ result",
+                line = intValue("line"),
+                col = intValue("col"),
+                nodeType = error?.get("node") as? String,
+                code = error?.get("code") as? String ?: "invalid_try_result",
+                name = error?.get("name") as? String,
+                argCount = intValue("argCount"),
+                minArgs = intValue("minArgs"),
+                maxArgs = intValue("maxArgs"),
+                argIndex = intValue("argIndex"),
+                expectedType = error?.get("expectedType") as? String,
+                actualType = error?.get("actualType") as? String,
+                stepCount = longValue("stepCount"),
+                maxSteps = longValue("maxSteps"),
+            )
+        }
+
         fun compile(source: String, cache: Boolean = false): AST {
             val hash = source.hashCode()
             if (cache && _cache.containsKey(hash)) {
@@ -2701,7 +2823,10 @@ open class MEvento(
         }
 
         fun capabilities(): Map<String, MEventoFunctionSpec> {
-            return globalFunctionSpecs.toMap()
+            return buildMap {
+                putAll(builtInFunctionSpecs)
+                putAll(globalFunctionSpecs)
+            }
         }
 
         fun validate(

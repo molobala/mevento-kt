@@ -218,6 +218,32 @@ class MeventoRegistrationTest {
     }
 
     @Test
+    fun `Should expose helpers for try results`() {
+        assertEquals(true, vm.execute("result = _try_(1 + 2); _ok_(result)"))
+        assertEquals(false, vm.execute("result = _try_(1 + 2); _err_(result)"))
+        assertEquals(3L, vm.execute("result = _try_(1 + 2); _value_(result, 99)"))
+        assertEquals(null, vm.execute("result = _try_(1 + 2); _error_(result)"))
+        assertEquals("fallback", vm.execute("result = _try_(missing()); _value_(result, 'fallback')"))
+        assertEquals("unknown_function", vm.execute("result = _try_(missing()); _code_(result)"))
+        assertTrue((vm.execute("result = _try_(missing()); _message_(result)") as String).contains("Unknown function"))
+        assertEquals("unknown_function", vm.execute("result = _try_(missing()); _error_(result)['code']"))
+        assertEquals(false, vm.execute("_ok_(12)"))
+        assertEquals(true, vm.execute("_err_(12)"))
+        assertEquals(null, vm.execute("_code_(12)"))
+        assertEquals(3L, vm.execute("_unwrap_(_try_(1 + 2))"))
+
+        val unwrapError = assertThrows<MEventoRuntimeError> {
+            vm.execute("_unwrap_(_try_(missing()))")
+        }
+        assertEquals("unknown_function", unwrapError.code)
+
+        val okSpec = vm.capabilities()["_ok_"]
+        assertEquals(1, okSpec?.minArgs)
+        assertEquals(1, okSpec?.maxArgs)
+        assertEquals("boolean", okSpec?.returnType)
+    }
+
+    @Test
     fun `Should expose global function capabilities`() {
         MEvento.register("globalCap", MEventoFunctionSpec("globalCap", maxArgs = 0, tags = setOf("io"))) { _, _ ->
             true
