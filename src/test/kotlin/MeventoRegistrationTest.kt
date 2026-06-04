@@ -51,12 +51,28 @@ class MeventoRegistrationTest {
 
         val validation = vm.validate("one()")
         assertFalse(validation.ok)
-        assertTrue(validation.errors.any { it.code == "invalid_function_arity" })
+        val validationError = validation.errors.first { it.code == "invalid_function_arity" }
+        assertEquals("one", validationError.name)
+        assertEquals(0, validationError.argCount)
+        assertEquals(1, validationError.minArgs)
+        assertEquals(1, validationError.maxArgs)
 
         val error = assertThrows<MEventoRuntimeError> {
             vm.execute("one()")
         }
+        assertEquals("invalid_function_arity", error.code)
+        assertEquals("one", error.name)
+        assertEquals(0, error.argCount)
+        assertEquals(1, error.minArgs)
+        assertEquals(1, error.maxArgs)
         assertTrue(error.message?.contains("expects 1 argument") == true)
+
+        val tryError = vm.execute("result = _try_(one()); result['error']") as Map<*, *>
+        assertEquals("invalid_function_arity", tryError["code"])
+        assertEquals("one", tryError["name"])
+        assertEquals(0, tryError["argCount"])
+        assertEquals(1, tryError["minArgs"])
+        assertEquals(1, tryError["maxArgs"])
     }
 
     @Test

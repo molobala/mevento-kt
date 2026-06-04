@@ -204,7 +204,26 @@ class MEventoRuntimeError(
     val col: Int? = null,
     val nodeType: String? = null,
     cause: Throwable? = null,
+    val code: String = "runtime_error",
+    val name: String? = null,
+    val argCount: Int? = null,
+    val minArgs: Int? = null,
+    val maxArgs: Int? = null,
 ) : RuntimeException(format(detail, line, col, nodeType), cause) {
+    fun diagnostic(): Map<String, Any?> {
+        return mapOf(
+            "code" to code,
+            "message" to detail,
+            "line" to line,
+            "col" to col,
+            "node" to nodeType,
+            "name" to name,
+            "argCount" to argCount,
+            "minArgs" to minArgs,
+            "maxArgs" to maxArgs,
+        )
+    }
+
     companion object {
         fun from(node: AST, cause: Throwable): MEventoRuntimeError {
             if (cause is MEventoRuntimeError) {
@@ -239,6 +258,9 @@ data class MEventoValidationError(
     val line: Int? = null,
     val col: Int? = null,
     val node: String? = null,
+    val argCount: Int? = null,
+    val minArgs: Int? = null,
+    val maxArgs: Int? = null,
 )
 
 data class MEventoValidationResult(
@@ -1505,8 +1527,26 @@ open class MEvento(
         }
     }
 
-    protected fun runtimeError(node: AST, detail: String): MEventoRuntimeError {
-        return MEventoRuntimeError(detail, node.line, node.col, node::class.simpleName)
+    protected fun runtimeError(
+        node: AST,
+        detail: String,
+        code: String = "runtime_error",
+        name: String? = null,
+        argCount: Int? = null,
+        minArgs: Int? = null,
+        maxArgs: Int? = null,
+    ): MEventoRuntimeError {
+        return MEventoRuntimeError(
+            detail,
+            node.line,
+            node.col,
+            node::class.simpleName,
+            code = code,
+            name = name,
+            argCount = argCount,
+            minArgs = minArgs,
+            maxArgs = maxArgs,
+        )
     }
 
     protected fun runtimeError(node: AST, cause: Throwable): MEventoRuntimeError {
@@ -1521,12 +1561,7 @@ open class MEvento(
         return mapOf(
             "ok" to false,
             "value" to null,
-            "error" to mapOf(
-                "message" to error.detail,
-                "line" to error.line,
-                "col" to error.col,
-                "node" to error.nodeType,
-            ),
+            "error" to error.diagnostic(),
         )
     }
 
@@ -1720,7 +1755,17 @@ open class MEvento(
         val calleeName = callee?.value
         if (calleeName == "_try_") {
             if (node.arguments.size != 1) {
-                errors.add(validationError("invalid_try_arity", node, "_try_ expects exactly one expression", "_try_"))
+                errors.add(
+                    validationError(
+                        "invalid_try_arity",
+                        node,
+                        "_try_ expects exactly one expression",
+                        "_try_",
+                        argCount = node.arguments.size,
+                        minArgs = 1,
+                        maxArgs = 1,
+                    )
+                )
             }
             node.arguments.forEach { validateNode(it, knownFunctions, errors, protectedByTry = true) }
             return
@@ -1736,6 +1781,9 @@ open class MEvento(
                         node,
                         "Function '$calleeName' expects ${spec.arityDescription()} argument(s), got ${node.arguments.size}",
                         calleeName,
+                        argCount = node.arguments.size,
+                        minArgs = spec.minArgs,
+                        maxArgs = spec.maxArgs,
                     )
                 )
             }
@@ -1748,6 +1796,9 @@ open class MEvento(
         node: AST,
         message: String,
         name: String? = null,
+        argCount: Int? = null,
+        minArgs: Int? = null,
+        maxArgs: Int? = null,
     ): MEventoValidationError {
         return MEventoValidationError(
             code = code,
@@ -1756,6 +1807,9 @@ open class MEvento(
             line = node.line,
             col = node.col,
             node = node::class.simpleName,
+            argCount = argCount,
+            minArgs = minArgs,
+            maxArgs = maxArgs,
         )
     }
 
@@ -1847,7 +1901,15 @@ open class MEvento(
         val calleeName = callee.value
         if (calleeName == "_try_") {
             if (args.size != 1) {
-                throw runtimeError(node, "_try_ expects exactly one expression")
+                throw runtimeError(
+                    node,
+                    "_try_ expects exactly one expression",
+                    code = "invalid_try_arity",
+                    name = "_try_",
+                    argCount = args.size,
+                    minArgs = 1,
+                    maxArgs = 1,
+                )
             }
             return try {
                 when (val value = visit(args[0])) {
@@ -1861,13 +1923,23 @@ open class MEvento(
         }
         val fn = functionsRegistry[calleeName]
         if (fn == null) {
-            throw runtimeError(node, "Unknown function '$calleeName'")
+            throw runtimeError(
+                node,
+                "Unknown function '$calleeName'",
+                code = "unknown_function",
+                name = calleeName,
+            )
         }
         val spec = functionSpecs[calleeName]
         if (spec != null && !spec.acceptsArity(args.size)) {
             throw runtimeError(
                 node,
                 "Function '$calleeName' expects ${spec.arityDescription()} argument(s), got ${args.size}",
+                code = "invalid_function_arity",
+                name = calleeName,
+                argCount = args.size,
+                minArgs = spec.minArgs,
+                maxArgs = spec.maxArgs,
             )
         }
         val argValues = args.map { visit(it) }.toList()
