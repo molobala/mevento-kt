@@ -1,6 +1,7 @@
 import com.ml.labs.MEvento
 import com.ml.labs.MEventoArgSpec
 import com.ml.labs.MEventoFunctionSpec
+import com.ml.labs.MEventoOptions
 import com.ml.labs.MEventoRuntimeError
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -137,6 +138,24 @@ class MeventoRegistrationTest {
         assertEquals(0, tryError["argIndex"])
         assertEquals("string", tryError["expectedType"])
         assertEquals("number", tryError["actualType"])
+    }
+
+    @Test
+    fun `Should stop execution when step budget is exceeded`() {
+        val limited = MEvento(options = MEventoOptions(maxSteps = 20))
+        val runtimeError = assertThrows<MEventoRuntimeError> {
+            limited.execute("a = 1; while(a > 0) { a = a + 1; }")
+        }
+
+        assertEquals("execution_budget_exceeded", runtimeError.code)
+        assertEquals(20L, runtimeError.maxSteps)
+        assertTrue((runtimeError.stepCount ?: 0L) > 20L)
+
+        val tryResult = MEvento(options = MEventoOptions(maxSteps = 2)).execute("_try_(1)") as Map<*, *>
+        val tryError = tryResult["error"] as Map<*, *>
+        assertEquals("execution_budget_exceeded", tryError["code"])
+        assertEquals(2L, tryError["maxSteps"])
+        assertTrue((tryError["stepCount"] as Long) > 2L)
     }
 
     @Test

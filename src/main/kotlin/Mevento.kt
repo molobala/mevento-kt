@@ -212,6 +212,8 @@ class MEventoRuntimeError(
     val argIndex: Int? = null,
     val expectedType: String? = null,
     val actualType: String? = null,
+    val stepCount: Long? = null,
+    val maxSteps: Long? = null,
 ) : RuntimeException(format(detail, line, col, nodeType), cause) {
     fun diagnostic(): Map<String, Any?> {
         return mapOf(
@@ -227,6 +229,8 @@ class MEventoRuntimeError(
             "argIndex" to argIndex,
             "expectedType" to expectedType,
             "actualType" to actualType,
+            "stepCount" to stepCount,
+            "maxSteps" to maxSteps,
         )
     }
 
@@ -326,6 +330,14 @@ data class MEventoArgSpec(
 
     companion object {
         val SUPPORTED_TYPES = setOf("any", "null", "boolean", "number", "string", "array", "object")
+    }
+}
+
+data class MEventoOptions(
+    val maxSteps: Long? = null,
+) {
+    init {
+        require(maxSteps == null || maxSteps > 0) { "maxSteps must be greater than 0" }
     }
 }
 
@@ -1537,12 +1549,17 @@ class MEventScope(
 open class MEvento(
     private val debug: Boolean = false,
     source: MEvento? = null,
+    val options: MEventoOptions = source?.options ?: MEventoOptions(),
 ) {
 
     internal val rootScope: MEventScope
     private var currentScope: MEventScope? = null
     internal val functionsRegistry: MutableMap<String, (List<Any?>, MEvento?) -> Any?>
     internal val functionSpecs: MutableMap<String, MEventoFunctionSpec>
+    private var stepCount: Long = 0
+
+    val executionStepCount: Long
+        get() = stepCount
 
     init {
         this.rootScope = source?.rootScope ?: MEventScope("com.ml.labs.MEvento", mutableMapOf())
@@ -1570,6 +1587,8 @@ open class MEvento(
         argIndex: Int? = null,
         expectedType: String? = null,
         actualType: String? = null,
+        stepCount: Long? = null,
+        maxSteps: Long? = null,
     ): MEventoRuntimeError {
         return MEventoRuntimeError(
             detail,
@@ -1584,6 +1603,8 @@ open class MEvento(
             argIndex = argIndex,
             expectedType = expectedType,
             actualType = actualType,
+            stepCount = stepCount,
+            maxSteps = maxSteps,
         )
     }
 
@@ -1601,6 +1622,24 @@ open class MEvento(
             "value" to null,
             "error" to error.diagnostic(),
         )
+    }
+
+    protected fun resetExecutionBudget() {
+        stepCount = 0
+    }
+
+    protected fun checkExecutionBudget(node: AST) {
+        stepCount += 1
+        val maxSteps = options.maxSteps ?: return
+        if (stepCount > maxSteps) {
+            throw runtimeError(
+                node,
+                "Execution budget exceeded after $stepCount step(s)",
+                code = "execution_budget_exceeded",
+                stepCount = stepCount,
+                maxSteps = maxSteps,
+            )
+        }
     }
 
     protected fun resolve(name: String): Any? {
@@ -1911,6 +1950,7 @@ open class MEvento(
     }
 
     private fun visit(node: AST): Any? {
+        checkExecutionBudget(node)
         val methodName = "visit${node::class.simpleName}"
         val method = this::class.java.declaredMethods.find { it.name == methodName }
             ?: throw runtimeError(node, "No $methodName declared")
@@ -2380,7 +2420,7 @@ open class MEvento(
     }
 
     open fun clone(): MEvento {
-        val ret = MEvento()
+        val ret = MEvento(options = options)
         ret.copyAttributes(this)
         return ret
     }
@@ -2393,6 +2433,7 @@ open class MEvento(
     ): Any? {
         val module = compile(source, cache)
         input?.forEach { (key, value) -> this._changeVariable(key, value) }
+        resetExecutionBudget()
         return visit(module)
     }
 
@@ -2451,12 +2492,13 @@ open class MEvento(
             source: String,
             cache: Boolean = false,
             input: Map<String, Any?>? = null,
+            options: MEventoOptions = MEventoOptions(),
         ): Any? {
-            return MEvento().execute(source, cache, input)
+            return MEvento(options = options).execute(source, cache, input)
         }
 
-        fun newInstance(): MEvento {
-            return MEvento()
+        fun newInstance(options: MEventoOptions = MEventoOptions()): MEvento {
+            return MEvento(options = options)
         }
     }
 

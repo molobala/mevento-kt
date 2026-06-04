@@ -1,11 +1,13 @@
 import com.ml.labs.MEvento
 import com.ml.labs.MEventoAsync
+import com.ml.labs.MEventoOptions
 import com.ml.labs.MEventoRuntimeError
 import com.ml.labs.newAsyncInstance
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.test.fail
 
 class MeventoAsyncTest {
@@ -61,6 +63,21 @@ class MeventoAsyncTest {
                 fail("Expected MEventoRuntimeError")
             } catch (error: MEventoRuntimeError) {
                 assertEquals(true, error.message?.contains("Invalid division by 0"))
+            }
+        }
+    }
+
+    @Test
+    fun `Should stop async execution when step budget is exceeded`() {
+        runBlocking {
+            val vm = MEventoAsync.newInstance(options = MEventoOptions(maxSteps = 20))
+            try {
+                vm.execute("a = 1; while(a > 0) { a = a + 1; }").await()
+                fail("Expected MEventoRuntimeError")
+            } catch (error: MEventoRuntimeError) {
+                assertEquals("execution_budget_exceeded", error.code)
+                assertEquals(20L, error.maxSteps)
+                assertTrue((error.stepCount ?: 0L) > 20L)
             }
         }
     }

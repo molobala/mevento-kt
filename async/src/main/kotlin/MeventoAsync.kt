@@ -14,13 +14,15 @@ class MEventoAsync(
     from: MEvento? = null,
     debug: Boolean = false,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
-) : MEvento(debug, source = from) {
+    options: MEventoOptions = from?.options ?: MEventoOptions(),
+) : MEvento(debug, source = from, options = options) {
 
     private fun <T> async(block: suspend CoroutineScope.() -> T): Deferred<T> {
         return CoroutineScope(dispatcher).async(block = block)
     }
 
     private fun visit(node: AST): Deferred<*>? {
+        checkExecutionBudget(node)
         val methodName = "visit${node::class.simpleName}"
         val method = this::class.java.declaredMethods.find { it.name == methodName }
             ?: throw runtimeError(node, "No $methodName declared")
@@ -463,7 +465,7 @@ class MEventoAsync(
     }
 
     override fun clone(): MEventoAsync {
-        val ret = MEventoAsync(dispatcher = dispatcher)
+        val ret = MEventoAsync(dispatcher = dispatcher, options = options)
         ret.copyAttributes(this)
         return ret
     }
@@ -475,6 +477,7 @@ class MEventoAsync(
     ): Deferred<Any?> {
         val module = compile(source, cache)
         input?.forEach { (key, value) -> this._changeVariable(key, value) }
+        resetExecutionBudget()
         return visit(module) as Deferred<Any?>
     }
 
@@ -499,8 +502,9 @@ class MEventoAsync(
         fun newInstance(
             from: MEvento? = null,
             dispatcher: CoroutineDispatcher = Dispatchers.Default,
+            options: MEventoOptions = from?.options ?: MEventoOptions(),
         ): MEventoAsync {
-            return MEventoAsync(from, dispatcher = dispatcher)
+            return MEventoAsync(from, dispatcher = dispatcher, options = options)
         }
 
         fun run(
@@ -508,8 +512,9 @@ class MEventoAsync(
             cache: Boolean = false,
             input: Map<String, Any?>? = null,
             dispatcher: CoroutineDispatcher = Dispatchers.Default,
+            options: MEventoOptions = MEventoOptions(),
         ): Deferred<Any?> {
-            return MEventoAsync(dispatcher = dispatcher).execute(source, cache, input)
+            return MEventoAsync(dispatcher = dispatcher, options = options).execute(source, cache, input)
         }
 
         suspend fun runSuspending(
@@ -517,8 +522,9 @@ class MEventoAsync(
             cache: Boolean = false,
             input: Map<String, Any?>? = null,
             dispatcher: CoroutineDispatcher = Dispatchers.Default,
+            options: MEventoOptions = MEventoOptions(),
         ): Any? {
-            return run(source, cache, input, dispatcher).await()
+            return run(source, cache, input, dispatcher, options).await()
         }
 
         fun registerSuspend(
@@ -535,6 +541,7 @@ class MEventoAsync(
 
 fun MEvento.newAsyncInstance(
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
+    options: MEventoOptions = this.options,
 ): MEventoAsync {
-    return MEventoAsync.newInstance(this, dispatcher)
+    return MEventoAsync.newInstance(this, dispatcher, options)
 }
