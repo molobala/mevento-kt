@@ -108,7 +108,7 @@ fun Number.eq(other: Any?): Boolean {
 
 fun _boolValue(test: Any?): Boolean {
     return !(test == null ||
-            (test is Number && test == 0) ||
+            (test is Number && test.toDouble() == 0.0) ||
             (test is String && test.length == 0) ||
             (test is Boolean && !test))
 }

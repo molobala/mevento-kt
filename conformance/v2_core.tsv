@@ -1,0 +1,27 @@
+# id	type	expected	source
+arithmetic.number	number	35	a = 12;b = 23;a + b
+arithmetic.precedence	number	14	2 + 3 * 4
+string.concat	string	molo	'mo' + 'lo'
+string.repeat	string	molomolo	'molo' * 2
+null.coalesce.string	string	fallback	null ?? 'fallback'
+logical.truthiness.false_and	boolean	false	0 && echo('unused')
+logical.truthiness.or	boolean	true	0 || 12
+object.literal.index	string	molo	obj = {name: 'molo'}; obj['name']
+array.literal.index	string	test	arr = ['molo', 'test']; arr[1]
+index.assignment	number	23	arr = [0, 1]; arr[0] = 23; arr[0]
+block.scope.parent_assignment	number	12	a = 0; if(true) { a = 12; b = 1; }; a
+block.scope.local_hidden	null	null	if(true) { hidden = 10; }; hidden
+if.else.number	number	2	if(false) { 1; } else { 2; }
+while.loop.number	number	0	a = 3; while(a > 0) { a = a - 1; }; a
+for.loop.sum	number	6	s = 0; for a = 0 till 3 { s = s + a; }; s
+for.loop.step.down	number	12	s = 0; for a = 6 till 0 down with 2 { s = s + a; }; s
+for.in.last.string	string	test	last = ''; for item in ['molo', 'test'] { last = item; }; last
+loop.break.number	number	2	s = 0; for a = 0 till 5 { if(a == 3) { break }; s = a; }; s
+loop.continue.number	number	5	s = 0; for a = 0 till 5 { if(a == 3) { continue }; s = a; }; s
+retained.for.index	number	4	values = for a = 0 till 2 { a * 2; }; values[2]
+host.call.evaluated.number	number	35	echo(12 + 23)
+return.from.block	number	12	if(true) { return 12; }; 0
+comments.line.number	number	5	a = 3 # ignored\nb = 2\na + b
+comments.block.number	number	7	a = 3 #* block\ncomment *#\nb = 4\na + b
+language.fr.number	number	3	<fr>\ns = 0;pour a = 0 jusqua 2 mont avec 1 { s = s + 1; }\ns
+language.bm.number	number	3	<bm>\ns = 0;seginka a = 0 kata 2 kay niin 1 { s = s + 1; }\ns
