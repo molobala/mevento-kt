@@ -1,10 +1,12 @@
 import com.ml.labs.MEvento
 import com.ml.labs.MEventoAsync
+import com.ml.labs.MEventoRuntimeError
 import com.ml.labs.newAsyncInstance
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.fail
 
 class MeventoAsyncTest {
     @Test
@@ -46,6 +48,19 @@ class MeventoAsyncTest {
             }
             vm.execute("delayed('ok')").await().also {
                 assertEquals("ok", it)
+            }
+        }
+    }
+
+    @Test
+    fun `Should surface runtime errors asynchronously`() {
+        runBlocking {
+            val vm = MEventoAsync.newInstance()
+            try {
+                vm.execute("a = 1; b = 0; a / b").await()
+                fail("Expected MEventoRuntimeError")
+            } catch (error: MEventoRuntimeError) {
+                assertEquals(true, error.message?.contains("Invalid division by 0"))
             }
         }
     }

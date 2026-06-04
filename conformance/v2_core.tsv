@@ -25,3 +25,5 @@ comments.line.number	number	5	a = 3 # ignored\nb = 2\na + b
 comments.block.number	number	7	a = 3 #* block\ncomment *#\nb = 4\na + b
 language.fr.number	number	3	<fr>\ns = 0;pour a = 0 jusqua 2 mont avec 1 { s = s + 1; }\ns
 language.bm.number	number	3	<bm>\ns = 0;seginka a = 0 kata 2 kay niin 1 { s = s + 1; }\ns
+runtime.error.divide_by_zero	error	Invalid division by 0	a = 1; b = 0; a / b
+runtime.error.unknown_function	error	Unknown function 'missingFn'	missingFn()

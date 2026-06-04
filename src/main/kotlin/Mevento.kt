@@ -198,6 +198,40 @@ abstract class AST(line: Int?, col: Int?) {
     }
 }
 
+class MEventoRuntimeError(
+    val detail: String,
+    val line: Int? = null,
+    val col: Int? = null,
+    val nodeType: String? = null,
+    cause: Throwable? = null,
+) : RuntimeException(format(detail, line, col, nodeType), cause) {
+    companion object {
+        fun from(node: AST, cause: Throwable): MEventoRuntimeError {
+            if (cause is MEventoRuntimeError) {
+                return cause
+            }
+            return MEventoRuntimeError(
+                cause.message ?: cause.toString(),
+                node.line,
+                node.col,
+                node::class.simpleName,
+                cause,
+            )
+        }
+
+        private fun format(
+            detail: String,
+            line: Int?,
+            col: Int?,
+            nodeType: String?,
+        ): String {
+            val location = if (line != null && col != null) " at $line:$col" else ""
+            val node = nodeType?.let { " [$it]" } ?: ""
+            return "MEvento runtime error$location$node: $detail"
+        }
+    }
+}
+
 data class RootAST(val body: List<AST>, val name: String, val source: String) : AST(1, 1) {
     override fun dump(): String {
         val builder = StringBuilder("Module $name Start {\n")
@@ -1425,6 +1459,14 @@ open class MEvento(
         }
     }
 
+    protected fun runtimeError(node: AST, detail: String): MEventoRuntimeError {
+        return MEventoRuntimeError(detail, node.line, node.col, node::class.simpleName)
+    }
+
+    protected fun runtimeError(node: AST, cause: Throwable): MEventoRuntimeError {
+        return MEventoRuntimeError.from(node, cause)
+    }
+
     protected fun resolve(name: String): Any? {
         return currentScope?.resolve(name)
     }
@@ -1492,11 +1534,15 @@ open class MEvento(
     private fun visit(node: AST): Any? {
         val methodName = "visit${node::class.simpleName}"
         val method = this::class.java.declaredMethods.find { it.name == methodName }
-            ?: throw Throwable("No $methodName declared")
+            ?: throw runtimeError(node, "No $methodName declared")
         return try {
             method.invoke(this, node)
         } catch (e: InvocationTargetException) {
-            null
+            val cause = e.targetException ?: e
+            if (cause is MEventoRuntimeError) {
+                throw cause
+            }
+            throw runtimeError(node, cause)
         }
     }
 
@@ -1573,7 +1619,7 @@ open class MEvento(
         val calleeName = callee.value
         val fn = functionsRegistry[calleeName]
         if (fn == null) {
-            return null
+            throw runtimeError(node, "Unknown function '$calleeName'")
         }
         val argValues = args.map { visit(it) }.toList()
         val result = fn.invoke(argValues, this)
@@ -1617,7 +1663,7 @@ open class MEvento(
 
             TokenType.div -> {
                 if (lValue is Number && rValue is Number) {
-                    if (rValue == 0.0) {
+                    if (rValue.toDouble() == 0.0) {
                         throw RuntimeException("Invalid division by 0")
                     }
                     return lValue / rValue

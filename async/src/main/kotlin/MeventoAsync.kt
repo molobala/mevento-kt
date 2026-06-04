@@ -23,11 +23,27 @@ class MEventoAsync(
     private fun visit(node: AST): Deferred<*>? {
         val methodName = "visit${node::class.simpleName}"
         val method = this::class.java.declaredMethods.find { it.name == methodName }
-            ?: throw Throwable("No $methodName declared")
-        return try {
+            ?: throw runtimeError(node, "No $methodName declared")
+        val result = try {
             method.invoke(this, node) as? Deferred<*>
         } catch (e: InvocationTargetException) {
-            throw e.cause ?: e
+            val cause = e.targetException ?: e
+            if (cause is MEventoRuntimeError) {
+                throw cause
+            }
+            throw runtimeError(node, cause)
+        }
+        return result?.let { deferred ->
+            async {
+                try {
+                    deferred.await()
+                } catch (e: Throwable) {
+                    if (e is MEventoRuntimeError) {
+                        throw e
+                    }
+                    throw runtimeError(node, e)
+                }
+            }
         }
     }
 
@@ -100,7 +116,8 @@ class MEventoAsync(
         val call = node as CallExpressionAST
         return async {
             val callee = call.callee as IdentifierAST
-            val fn = resolveFunction(callee.value) ?: return@async null
+            val fn = resolveFunction(callee.value)
+                ?: throw runtimeError(call, "Unknown function '${callee.value}'")
             val argValues = call.arguments.map { visit(it) as Deferred<*> }.awaitAll()
             when (val result = fn.invoke(argValues, this@MEventoAsync)) {
                 is Deferred<*> -> result.await()

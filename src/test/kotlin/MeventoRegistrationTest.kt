@@ -1,7 +1,8 @@
 import com.ml.labs.MEvento
+import com.ml.labs.MEventoRuntimeError
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 
 class MeventoRegistrationTest {
     var vm: MEvento = MEvento()
@@ -21,8 +22,8 @@ class MeventoRegistrationTest {
         vm.registerFunction("log2") { _, _ ->
             "log2"
         }
-        MEvento.run("log2()").also {
-            assertNull(it)
+        assertThrows<MEventoRuntimeError> {
+            MEvento.run("log2()")
         }
         vm.execute("log2()").also {
             assertEquals("log2", it)

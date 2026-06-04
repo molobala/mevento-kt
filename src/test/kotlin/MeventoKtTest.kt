@@ -1,10 +1,18 @@
 import com.ml.labs.MEvento
+import com.ml.labs.MEventoRuntimeError
 import org.junit.jupiter.api.Test
 
 import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.assertThrows
 
 class MeventoKtTest {
     var vm: MEvento = MEvento()
+
+    init {
+        vm.registerFunction("log") { _, _ -> null }
+        vm.registerFunction("testo") { _, _ -> null }
+        vm.registerFunction("trufy") { _, _ -> true }
+    }
 
     @Test
     fun `Should make arithmetic operation on number`() {
@@ -20,8 +28,8 @@ class MeventoKtTest {
         vm.execute("a = 2;b=24;b/a").also {
             assertEquals(12L, it)
         }
-        vm.execute("a = 0;b=24;b/a").also {
-            assertNull(it)
+        assertThrows<MEventoRuntimeError> {
+            vm.execute("a = 0;b=24;b/a")
         }
     }
 
@@ -170,7 +178,7 @@ class MeventoKtTest {
 
     @Test
     fun `Break outside loop`() {
-        org.junit.jupiter.api.assertThrows<Exception> {
+        assertThrows<Exception> {
             vm.execute(
                 """a = 12;
         if(a == 12) {

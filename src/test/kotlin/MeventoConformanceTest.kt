@@ -1,8 +1,10 @@
 import com.ml.labs.MEvento
+import com.ml.labs.MEventoRuntimeError
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import java.io.File
 
 class MeventoConformanceTest {
@@ -12,9 +14,18 @@ class MeventoConformanceTest {
             val vm = MEvento()
             vm.registerFunction("echo") { args, _ -> args.firstOrNull() }
 
-            val actual = vm.execute(case.source)
-
-            assertValue(case, actual)
+            if (case.type == "error") {
+                val error = assertThrows<MEventoRuntimeError>(case.id) {
+                    vm.execute(case.source)
+                }
+                assertTrue(
+                    error.message?.contains(case.expected) == true,
+                    "${case.id}: expected error containing `${case.expected}`, got `${error.message}`",
+                )
+            } else {
+                val actual = vm.execute(case.source)
+                assertValue(case, actual)
+            }
         }
     }
 
