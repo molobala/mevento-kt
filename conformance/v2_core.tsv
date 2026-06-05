@@ -15,6 +15,23 @@ object.dot.bracket_mix	number	3	obj = {items: [1, 2, 3]}; obj.items[2]
 object.dot.missing	null	null	obj = {}; obj.missing
 array.literal.index	string	test	arr = ['molo', 'test']; arr[1]
 index.assignment	number	23	arr = [0, 1]; arr[0] = 23; arr[0]
+collection.len.array	number	3	_len_([1, 2, 3])
+collection.len.object	number	2	_len_({a: 1, b: 2})
+collection.len.string	number	4	_len_('molo')
+collection.push.mutates	string	a	items = []; _push_(items, 'a'); items[0]
+collection.push.returns_array	number	2	items = []; items = _push_(items, 'a'); _push_(items, 'b'); _len_(items)
+collection.pop.value	string	b	items = ['a', 'b']; _pop_(items)
+collection.pop.mutates	number	1	items = ['a', 'b']; _pop_(items); _len_(items)
+collection.pop.empty	null	null	items = []; _pop_(items)
+collection.insert.mutates	string	b	items = ['a', 'c']; _insert_(items, 1, 'b'); items[1]
+collection.remove_at.value	string	a	items = ['a', 'b']; _remove_at_(items, 0)
+collection.remove_at.mutates	string	b	items = ['a', 'b']; _remove_at_(items, 0); items[0]
+collection.remove_at.missing	null	null	items = ['a']; _remove_at_(items, 3)
+collection.has.true	boolean	true	obj = {a: 1}; _has_(obj, 'a')
+collection.has.false	boolean	false	obj = {a: 1}; _has_(obj, 'b')
+collection.keys.first	string	a	obj = {a: 1, b: 2}; _keys_(obj)[0]
+collection.values.first	number	1	obj = {a: 1, b: 2}; _values_(obj)[0]
+collection.try.invalid_type	string	invalid_argument_type	r = _try_(_push_({}, 1)); r['error']['code']
 block.scope.parent_assignment	number	12	a = 0; if(true) { a = 12; b = 1; }; a
 block.scope.local_hidden	null	null	if(true) { hidden = 10; }; hidden
 if.else.number	number	2	if(false) { 1; } else { 2; }

@@ -255,6 +255,15 @@ class MeventoRegistrationTest {
         assertEquals(1, okSpec?.minArgs)
         assertEquals(1, okSpec?.maxArgs)
         assertEquals("boolean", okSpec?.returnType)
+
+        val pushSpec = vm.capabilities()["_push_"]
+        assertEquals(2, pushSpec?.minArgs)
+        assertEquals("array", pushSpec?.args?.first()?.type)
+        assertEquals("array", pushSpec?.returnType)
+
+        val keysSpec = vm.capabilities()["_keys_"]
+        assertEquals("object", keysSpec?.args?.first()?.type)
+        assertEquals("array", keysSpec?.returnType)
     }
 
     @Test

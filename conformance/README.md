@@ -35,6 +35,8 @@ wrapped in `_try_`.
   new variables declared inside the block remain local.
 - Arrays, maps, index access, and index assignment use host-native collection
   values.
+- Built-in collection helpers cover array length, push, pop, insert,
+  remove-at, plus map has/keys/values.
 - Host functions receive already evaluated arguments.
 - `_try_(expression)` evaluates its single expression lazily and returns a
   result map: `{ok: true, value: ..., error: null}` or

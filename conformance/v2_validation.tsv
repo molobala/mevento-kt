@@ -7,3 +7,6 @@ validate.arity_exact_ok	echo:1..1	true	-	echo(12)
 validate.arity_too_few	echo:1..1	false	invalid_function_arity	echo()
 validate.arity_too_many	pair:1..2	false	invalid_function_arity	pair(1, 2, 3)
 validate.try_protected_arity	echo:1..1	true	-	r = _try_(echo()); r['ok']
+validate.builtin_push_ok	-	true	-	_push_([], 1)
+validate.builtin_push_type	-	false	invalid_argument_type	_push_({}, 1)
+validate.builtin_insert_index_type	-	false	invalid_argument_type	_insert_([], 'bad', 1)

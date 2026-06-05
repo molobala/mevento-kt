@@ -2745,6 +2745,75 @@ open class MEvento(
                 args = listOf(MEventoArgSpec("result")),
                 returnType = "any",
             ),
+            "_len_" to MEventoFunctionSpec(
+                "_len_",
+                minArgs = 1,
+                maxArgs = 1,
+                args = listOf(MEventoArgSpec("target")),
+                returnType = "number",
+            ),
+            "_push_" to MEventoFunctionSpec(
+                "_push_",
+                minArgs = 2,
+                maxArgs = 2,
+                args = listOf(
+                    MEventoArgSpec("array", "array"),
+                    MEventoArgSpec("value"),
+                ),
+                returnType = "array",
+            ),
+            "_pop_" to MEventoFunctionSpec(
+                "_pop_",
+                minArgs = 1,
+                maxArgs = 1,
+                args = listOf(MEventoArgSpec("array", "array")),
+                returnType = "any",
+            ),
+            "_insert_" to MEventoFunctionSpec(
+                "_insert_",
+                minArgs = 3,
+                maxArgs = 3,
+                args = listOf(
+                    MEventoArgSpec("array", "array"),
+                    MEventoArgSpec("index", "number"),
+                    MEventoArgSpec("value"),
+                ),
+                returnType = "array",
+            ),
+            "_remove_at_" to MEventoFunctionSpec(
+                "_remove_at_",
+                minArgs = 2,
+                maxArgs = 2,
+                args = listOf(
+                    MEventoArgSpec("array", "array"),
+                    MEventoArgSpec("index", "number"),
+                ),
+                returnType = "any",
+            ),
+            "_has_" to MEventoFunctionSpec(
+                "_has_",
+                minArgs = 2,
+                maxArgs = 2,
+                args = listOf(
+                    MEventoArgSpec("object", "object"),
+                    MEventoArgSpec("key"),
+                ),
+                returnType = "boolean",
+            ),
+            "_keys_" to MEventoFunctionSpec(
+                "_keys_",
+                minArgs = 1,
+                maxArgs = 1,
+                args = listOf(MEventoArgSpec("object", "object")),
+                returnType = "array",
+            ),
+            "_values_" to MEventoFunctionSpec(
+                "_values_",
+                minArgs = 1,
+                maxArgs = 1,
+                args = listOf(MEventoArgSpec("object", "object")),
+                returnType = "array",
+            ),
         )
         private val builtInFunctionsRegistry: Map<String, (List<Any?>, MEvento?) -> Any?> = mapOf(
             "_ok_" to { args, _ ->
@@ -2777,6 +2846,43 @@ open class MEvento(
                     throw runtimeErrorFromTryResult(result)
                 }
             },
+            "_len_" to { args, _ ->
+                when (val target = args.getOrNull(0)) {
+                    is List<*> -> target.size.toLong()
+                    is Map<*, *> -> target.size.toLong()
+                    is String -> target.length.toLong()
+                    else -> throw collectionArgumentError("_len_", 0, "array|object|string", target)
+                }
+            },
+            "_push_" to { args, _ ->
+                mutableArrayArg("_push_", args, 0).also { it.add(args.getOrNull(1)) }
+            },
+            "_pop_" to { args, _ ->
+                val array = mutableArrayArg("_pop_", args, 0)
+                if (array.isEmpty()) null else array.removeAt(array.lastIndex)
+            },
+            "_insert_" to { args, _ ->
+                val array = mutableArrayArg("_insert_", args, 0)
+                val index = numericIndex("_insert_", args, 1)
+                if (index < 0 || index > array.size) {
+                    throw indexOutOfRange("_insert_", index, array.size)
+                }
+                array.also { it.add(index, args.getOrNull(2)) }
+            },
+            "_remove_at_" to { args, _ ->
+                val array = mutableArrayArg("_remove_at_", args, 0)
+                val index = numericIndex("_remove_at_", args, 1)
+                if (index < 0 || index >= array.size) null else array.removeAt(index)
+            },
+            "_has_" to { args, _ ->
+                mapArg("_has_", args, 0).containsKey(args.getOrNull(1))
+            },
+            "_keys_" to { args, _ ->
+                mapArg("_keys_", args, 0).keys.toMutableList()
+            },
+            "_values_" to { args, _ ->
+                mapArg("_values_", args, 0).values.toMutableList()
+            },
         )
         val globalFunctionsRegistry: MutableMap<String, (List<Any?>, MEvento?) -> Any?> =
             mutableMapOf()
@@ -2791,6 +2897,68 @@ open class MEvento(
             val result = value as? Map<*, *> ?: return null
             if (result["ok"] != false) return null
             return result["error"] as? Map<*, *>
+        }
+
+        @Suppress("UNCHECKED_CAST")
+        private fun mutableArrayArg(name: String, args: List<Any?>, index: Int): MutableList<Any?> {
+            val value = args.getOrNull(index)
+            if (value is MutableList<*>) {
+                return value as MutableList<Any?>
+            }
+            throw collectionArgumentError(name, index, "array", value)
+        }
+
+        private fun mapArg(name: String, args: List<Any?>, index: Int): Map<*, *> {
+            val value = args.getOrNull(index)
+            if (value is Map<*, *>) {
+                return value
+            }
+            throw collectionArgumentError(name, index, "object", value)
+        }
+
+        private fun numericIndex(name: String, args: List<Any?>, index: Int): Int {
+            val value = args.getOrNull(index)
+            if (value is Number) {
+                return value.toInt()
+            }
+            throw collectionArgumentError(name, index, "number", value)
+        }
+
+        private fun collectionArgumentError(
+            name: String,
+            argIndex: Int,
+            expectedType: String,
+            value: Any?,
+        ): MEventoRuntimeError {
+            val actualType = builtInValueType(value)
+            return MEventoRuntimeError(
+                "Function '$name' argument $argIndex expects $expectedType, got $actualType",
+                code = "invalid_argument_type",
+                name = name,
+                argIndex = argIndex,
+                expectedType = expectedType,
+                actualType = actualType,
+            )
+        }
+
+        private fun indexOutOfRange(name: String, index: Int, size: Int): MEventoRuntimeError {
+            return MEventoRuntimeError(
+                "Function '$name' index $index is out of range for array of length $size",
+                code = "index_out_of_range",
+                name = name,
+            )
+        }
+
+        private fun builtInValueType(value: Any?): String {
+            return when (value) {
+                null -> "null"
+                is Boolean -> "boolean"
+                is Number -> "number"
+                is String -> "string"
+                is List<*> -> "array"
+                is Map<*, *> -> "object"
+                else -> "object"
+            }
         }
 
         private fun runtimeErrorFromTryResult(value: Any?): MEventoRuntimeError {
