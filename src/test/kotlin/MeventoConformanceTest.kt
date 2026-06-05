@@ -10,8 +10,17 @@ import java.io.File
 
 class MeventoConformanceTest {
     @Test
+    fun `v1 compatibility conformance corpus`() {
+        runCases("conformance/v1_compat.tsv")
+    }
+
+    @Test
     fun `v2 core conformance corpus`() {
-        readCases().forEach { case ->
+        runCases("conformance/v2_core.tsv")
+    }
+
+    private fun runCases(path: String) {
+        readCases(path).forEach { case ->
             val vm = MEvento()
             vm.registerFunction("echo") { args, _ -> args.firstOrNull() }
 
@@ -45,8 +54,8 @@ class MeventoConformanceTest {
         }
     }
 
-    private fun readCases(): List<ConformanceCase> {
-        val file = File("conformance/v2_core.tsv")
+    private fun readCases(path: String): List<ConformanceCase> {
+        val file = File(path)
         assertTrue(file.exists(), "Missing conformance corpus: ${file.absolutePath}")
 
         return file.readLines()

@@ -1,10 +1,11 @@
 # MEvento v2 Core Conformance
 
-This folder contains the executable baseline for MEvento v2 behavior.
+This folder contains the executable baseline for MEvento v2 behavior and v1
+script compatibility.
 
-`v2_core.tsv` is intentionally line-oriented so every host implementation can
-read it without adding parser dependencies. Each non-comment row has four
-tab-separated fields:
+`v1_compat.tsv` and `v2_core.tsv` are intentionally line-oriented so every host
+implementation can read them without adding parser dependencies. Each
+non-comment row has four tab-separated fields:
 
 ```text
 id<TAB>expected_type<TAB>expected_value<TAB>source
@@ -12,6 +13,15 @@ id<TAB>expected_type<TAB>expected_value<TAB>source
 
 The `source` and `expected_value` fields may use `\n`, `\r`, `\t`, and `\\`
 escapes.
+
+`v1_compat.tsv` contains scripts written only with v1-era syntax. It is the
+migration guard for old database scripts and must not include v2-only syntax or
+built-ins such as dot property access, `_try_`, trace, manifests, or result
+helpers.
+
+One v1 behavior is intentionally not preserved there: old missing host function
+calls returned `null`, while v2 raises `unknown_function` unless the call is
+wrapped in `_try_`.
 
 ## Core Contract Covered
 
