@@ -145,6 +145,23 @@ class MeventoRegistrationTest {
     }
 
     @Test
+    fun `Should support v1 compatibility mode for unknown functions`() {
+        val strictError = assertThrows<MEventoRuntimeError> {
+            MEvento().execute("missing()")
+        }
+        assertEquals("unknown_function", strictError.code)
+
+        val compatible = MEvento(options = MEventoOptions(compatV1 = true))
+        assertEquals(null, compatible.execute("missing()"))
+        assertEquals(12L, compatible.execute("missing(); 12"))
+        assertTrue(compatible.validate("missing()").ok)
+
+        val tryResult = compatible.execute("result = _try_(missing()); result") as Map<*, *>
+        assertEquals(true, tryResult["ok"])
+        assertEquals(null, tryResult["value"])
+    }
+
+    @Test
     fun `Should stop execution when step budget is exceeded`() {
         val limited = MEvento(options = MEventoOptions(maxSteps = 20))
         val runtimeError = assertThrows<MEventoRuntimeError> {

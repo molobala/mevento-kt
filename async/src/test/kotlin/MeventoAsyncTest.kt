@@ -83,6 +83,22 @@ class MeventoAsyncTest {
     }
 
     @Test
+    fun `Should support v1 compatibility mode for unknown functions`() {
+        runBlocking {
+            val compatible = MEventoAsync.newInstance(options = MEventoOptions(compatV1 = true))
+            assertEquals(null, compatible.execute("missing()").await())
+            assertEquals(12L, compatible.execute("missing(); 12").await())
+
+            try {
+                MEventoAsync.newInstance().execute("missing()").await()
+                fail("Expected MEventoRuntimeError")
+            } catch (error: MEventoRuntimeError) {
+                assertEquals("unknown_function", error.code)
+            }
+        }
+    }
+
+    @Test
     fun `Should create async VM from sync VM`() {
         runBlocking {
             val vm = MEvento.newInstance()

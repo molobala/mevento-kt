@@ -339,6 +339,7 @@ data class MEventoArgSpec(
 data class MEventoOptions(
     val maxSteps: Long? = null,
     val trace: Boolean = false,
+    val compatV1: Boolean = false,
 ) {
     init {
         require(maxSteps == null || maxSteps > 0) { "maxSteps must be greater than 0" }
@@ -1953,7 +1954,9 @@ open class MEvento(
         if (calleeName != null && !protectedByTry) {
             val spec = knownFunctions[calleeName]
             if (spec == null) {
-                errors.add(validationError("unknown_function", node, "Unknown function '$calleeName'", calleeName))
+                if (!options.compatV1) {
+                    errors.add(validationError("unknown_function", node, "Unknown function '$calleeName'", calleeName))
+                }
             } else if (!spec.acceptsArity(node.arguments.size)) {
                 errors.add(
                     validationError(
@@ -2295,6 +2298,9 @@ open class MEvento(
         }
         val fn = functionsRegistry[calleeName]
         if (fn == null) {
+            if (options.compatV1) {
+                return null
+            }
             throw runtimeError(
                 node,
                 "Unknown function '$calleeName'",

@@ -133,7 +133,17 @@ class MEventoAsync(
                 }
             }
             val fn = resolveFunction(callee.value)
-                ?: throw runtimeError(call, "Unknown function '${callee.value}'")
+                ?: run {
+                    if (options.compatV1) {
+                        return@async null
+                    }
+                    throw runtimeError(
+                        call,
+                        "Unknown function '${callee.value}'",
+                        code = "unknown_function",
+                        name = callee.value,
+                    )
+                }
             val spec = resolveFunctionSpec(callee.value)
             val argValues = call.arguments.map { visit(it) as Deferred<*> }.awaitAll()
             recordTrace(

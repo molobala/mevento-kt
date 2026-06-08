@@ -11,10 +11,14 @@ an optional coroutine artifact for suspend host functions.
 ## v2 Status
 
 v2 is a superset of v1 script syntax, with stricter diagnostics and new
-runtime helpers. Existing v1 scripts should still parse and execute in v2, with
-one intentional runtime difference: unknown host functions now raise
-`unknown_function` instead of silently returning `null`. Wrap a risky call in
-`_try_` when a script should continue after failure.
+runtime helpers. Existing v1 scripts should still parse and execute in v2.
+
+By default, v2 is stricter: unknown host functions raise `unknown_function`
+instead of silently returning `null`. For existing database scripts that depend
+on the v1 behavior, run the VM with `MEventoOptions(compatV1 = true)`. In that
+mode, missing host functions return `null` and instance validation does not
+report them as unknown. New scripts should prefer strict mode and wrap risky
+calls in `_try_` when a script should continue after failure.
 
 v2 additions include:
 
@@ -23,6 +27,7 @@ v2 additions include:
 - Function specs with arity, argument type hints, tags, and return type hints.
 - Script manifest validation for required host functions, inputs, and outputs.
 - Trace mode and execution step budgets.
+- v1 compatibility mode for existing scripts that call optional host functions.
 - Minimal collection built-ins for arrays and maps.
 
 ## Script Syntax
@@ -177,12 +182,16 @@ val checked = MEvento.validateManifest(
 )
 ```
 
-## Trace And Budgets
+## Options: Compatibility, Trace And Budgets
 
-Use `MEventoOptions` to cap execution steps or collect a lightweight trace:
+Use `MEventoOptions` to enable v1 compatibility for existing scripts, cap
+execution steps, or collect a lightweight trace:
 
 ```kotlin
 import com.ml.labs.MEventoOptions
+
+val legacyVm = MEvento.newInstance(MEventoOptions(compatV1 = true))
+legacyVm.execute("optionalHostFunction()") // returns null when missing
 
 val vm = MEvento.newInstance(MEventoOptions(maxSteps = 1000, trace = true))
 vm.execute("log('ok')")
