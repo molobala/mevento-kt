@@ -289,6 +289,10 @@ data class MEventoFunctionSpec(
     val tags: Set<String> = emptySet(),
     val args: List<MEventoArgSpec> = emptyList(),
     val returnType: String = "any",
+    val description: String? = null,
+    val returnDescription: String? = null,
+    val examples: List<MEventoFunctionExample> = emptyList(),
+    val metadata: Map<String, Any?> = emptyMap(),
 ) {
     init {
         require(minArgs == null || minArgs >= 0) { "minArgs must be greater than or equal to 0" }
@@ -320,12 +324,31 @@ data class MEventoFunctionSpec(
             else -> "at most $maxArgs"
         }
     }
+
+    fun copyWithName(name: String): MEventoFunctionSpec {
+        return copy(
+            name = name,
+            tags = tags.toSet(),
+            args = args.map { it.copy(metadata = cloneMetadataMap(it.metadata)) },
+            examples = examples.map { it.copy(result = cloneMetadataValue(it.result)) },
+            metadata = cloneMetadataMap(metadata),
+        )
+    }
 }
+
+data class MEventoFunctionExample(
+    val script: String,
+    val title: String? = null,
+    val result: Any? = null,
+    val description: String? = null,
+)
 
 data class MEventoArgSpec(
     val name: String,
     val type: String = "any",
     val required: Boolean = true,
+    val description: String? = null,
+    val metadata: Map<String, Any?> = emptyMap(),
 ) {
     init {
         require(type in SUPPORTED_TYPES) { "Unsupported argument type '$type'" }
@@ -334,6 +357,20 @@ data class MEventoArgSpec(
     companion object {
         val SUPPORTED_TYPES = setOf("any", "null", "boolean", "number", "string", "array", "object")
     }
+}
+
+private fun cloneMetadataValue(value: Any?): Any? {
+    return when (value) {
+        is Map<*, *> -> value.entries.associate { (key, item) ->
+            key.toString() to cloneMetadataValue(item)
+        }
+        is List<*> -> value.map { cloneMetadataValue(it) }
+        else -> value
+    }
+}
+
+private fun cloneMetadataMap(value: Map<String, Any?>): Map<String, Any?> {
+    return value.mapValues { (_, item) -> cloneMetadataValue(item) }
 }
 
 data class MEventoOptions(
@@ -1736,12 +1773,12 @@ open class MEvento(
     }
 
     fun capabilities(): Map<String, MEventoFunctionSpec> {
-        return functionSpecs.toMap()
+        return functionSpecs.mapValues { (name, spec) -> spec.copyWithName(name) }
     }
 
     fun copyAttributes(other: MEvento) {
         functionsRegistry.putAll(other.functionsRegistry)
-        functionSpecs.putAll(other.functionSpecs)
+        functionSpecs.putAll(other.functionSpecs.mapValues { (name, spec) -> spec.copyWithName(name) })
         rootScope.memory.putAll(other.rootScope.memory)
     }
 
@@ -1794,7 +1831,7 @@ open class MEvento(
 
     fun registerFunction(id: String, spec: MEventoFunctionSpec, fn: (List<Any?>, MEvento?) -> Any?) {
         functionsRegistry[id] = fn
-        functionSpecs[id] = spec.copy(name = id)
+        functionSpecs[id] = spec.copyWithName(id)
     }
 
     fun unregisterFunction(id: String) {
@@ -1858,7 +1895,7 @@ open class MEvento(
             known[name] = functionSpecs[name] ?: MEventoFunctionSpec(name)
         }
         specs?.forEach { (name, spec) ->
-            known[name] = spec.copy(name = name)
+            known[name] = spec.copyWithName(name)
         }
         return known
     }
@@ -3007,7 +3044,7 @@ open class MEvento(
 
         fun register(id: String, spec: MEventoFunctionSpec, fn: (List<Any?>, MEvento?) -> Any?) {
             globalFunctionsRegistry[id] = fn
-            globalFunctionSpecs[id] = spec.copy(name = id)
+            globalFunctionSpecs[id] = spec.copyWithName(id)
         }
 
         fun unregister(id: String) {
@@ -3017,8 +3054,8 @@ open class MEvento(
 
         fun capabilities(): Map<String, MEventoFunctionSpec> {
             return buildMap {
-                putAll(builtInFunctionSpecs)
-                putAll(globalFunctionSpecs)
+                builtInFunctionSpecs.forEach { (name, spec) -> put(name, spec.copyWithName(name)) }
+                globalFunctionSpecs.forEach { (name, spec) -> put(name, spec.copyWithName(name)) }
             }
         }
 

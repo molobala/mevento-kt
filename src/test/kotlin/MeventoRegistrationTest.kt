@@ -1,5 +1,6 @@
 import com.ml.labs.MEvento
 import com.ml.labs.MEventoArgSpec
+import com.ml.labs.MEventoFunctionExample
 import com.ml.labs.MEventoFunctionSpec
 import com.ml.labs.MEventoOptions
 import com.ml.labs.MEventoRuntimeError
@@ -88,8 +89,29 @@ class MeventoRegistrationTest {
                 minArgs = 1,
                 maxArgs = 2,
                 tags = setOf("pure"),
-                args = listOf(MEventoArgSpec("message", "string")),
+                args = listOf(
+                    MEventoArgSpec(
+                        "message",
+                        "string",
+                        description = "Message to return.",
+                        metadata = mapOf("ui" to mapOf("control" to "text")),
+                    )
+                ),
                 returnType = "string",
+                description = "Returns a tagged message.",
+                returnDescription = "The original message.",
+                examples = listOf(
+                    MEventoFunctionExample(
+                        title = "Return message",
+                        script = "tagged('hello')",
+                        result = mapOf("value" to "hello"),
+                        description = "Returns the provided message.",
+                    )
+                ),
+                metadata = mapOf(
+                    "category" to "demo",
+                    "permissions" to listOf("none"),
+                ),
             )
         ) { args, _ ->
             args.firstOrNull()
@@ -102,7 +124,28 @@ class MeventoRegistrationTest {
         assertTrue(spec?.tags?.contains("pure") == true)
         assertEquals("message", spec?.args?.first()?.name)
         assertEquals("string", spec?.args?.first()?.type)
+        assertEquals("Message to return.", spec?.args?.first()?.description)
+        assertEquals(mapOf("control" to "text"), spec?.args?.first()?.metadata?.get("ui"))
         assertEquals("string", spec?.returnType)
+        assertEquals("Returns a tagged message.", spec?.description)
+        assertEquals("The original message.", spec?.returnDescription)
+        assertEquals("Return message", spec?.examples?.first()?.title)
+        assertEquals("tagged('hello')", spec?.examples?.first()?.script)
+        assertEquals(mapOf("value" to "hello"), spec?.examples?.first()?.result)
+        assertEquals("Returns the provided message.", spec?.examples?.first()?.description)
+        assertEquals("demo", spec?.metadata?.get("category"))
+        assertEquals(listOf("none"), spec?.metadata?.get("permissions"))
+
+        @Suppress("UNCHECKED_CAST")
+        (spec?.metadata?.get("permissions") as MutableList<String>).add("mutated")
+        @Suppress("UNCHECKED_CAST")
+        ((spec.args.first().metadata["ui"] as MutableMap<String, String>)["control"]) = "mutated"
+        @Suppress("UNCHECKED_CAST")
+        ((spec.examples.first().result as MutableMap<String, String>)["value"]) = "mutated"
+        val cloned = vm.capabilities()["tagged"]
+        assertEquals(listOf("none"), cloned?.metadata?.get("permissions"))
+        assertEquals(mapOf("control" to "text"), cloned?.args?.first()?.metadata?.get("ui"))
+        assertEquals(mapOf("value" to "hello"), cloned?.examples?.first()?.result)
     }
 
     @Test

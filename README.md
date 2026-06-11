@@ -24,7 +24,8 @@ v2 additions include:
 
 - Dot property access: `user.name` is equivalent to `user['name']`.
 - `_try_` result capture and helper functions.
-- Function specs with arity, argument type hints, tags, and return type hints.
+- Function specs with arity, argument type hints, tags, return type hints, and
+  optional documentation metadata.
 - Script manifest validation for required host functions, inputs, and outputs.
 - Trace mode and execution step budgets.
 - v1 compatibility mode for existing scripts that call optional host functions.
@@ -121,6 +122,7 @@ Register functions on one VM instance:
 ```kotlin
 import com.ml.labs.MEvento
 import com.ml.labs.MEventoArgSpec
+import com.ml.labs.MEventoFunctionExample
 import com.ml.labs.MEventoFunctionSpec
 
 val vm = MEvento.newInstance()
@@ -129,13 +131,17 @@ vm.registerFunction(
     "add",
     MEventoFunctionSpec(
         "add",
+        description = "Adds two numeric values.",
         minArgs = 2,
         maxArgs = 2,
         args = listOf(
-            MEventoArgSpec("left", "number"),
-            MEventoArgSpec("right", "number"),
+            MEventoArgSpec("left", "number", description = "First value."),
+            MEventoArgSpec("right", "number", description = "Second value."),
         ),
         returnType = "number",
+        returnDescription = "The sum of the two values.",
+        examples = listOf(MEventoFunctionExample(script = "add(12, 23)", result = 35)),
+        metadata = mapOf("category" to "math"),
     )
 ) { args, _ ->
     (args[0] as Number).toLong() + (args[1] as Number).toLong()
@@ -152,6 +158,14 @@ val total = MEvento.run(
     input = mapOf("base" to 12, "bonus" to 23),
 )
 ```
+
+## Documenting Host Functions
+
+Function and argument specs can carry optional documentation metadata:
+`description`, `returnDescription`, `examples`, and `metadata` on functions,
+plus `description` and `metadata` on arguments. The runtime exposes those fields
+through `capabilities()` for diagnostics, documentation, and UI tooling, but
+they do not change script execution.
 
 ## Validation And Manifests
 
